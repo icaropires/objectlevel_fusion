@@ -1,3 +1,11 @@
+# ROS
+*/install
+*/log
+*/build
+
+# VIM
+*.swp
+
 # Prerequisites
 *.d
 
