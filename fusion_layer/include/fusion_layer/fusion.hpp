@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/string.hpp"
+#include "object_model_msgs/msg/object_model.hpp"
 
 using std::placeholders::_1;
 
@@ -14,6 +14,6 @@ public:
   Fusion();
 
 private:
-  void topic_callback(const std_msgs::msg::String::SharedPtr msg) const;
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscription_;
+  void topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) const;
+  rclcpp::Subscription<object_model_msgs::msg::ObjectModel>::SharedPtr subscription_;
 };

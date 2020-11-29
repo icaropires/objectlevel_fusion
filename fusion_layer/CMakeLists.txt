@@ -13,11 +13,10 @@ endif()
 find_package(ament_cmake REQUIRED)
 
 find_package(rclcpp REQUIRED)
-find_package(std_msgs REQUIRED)
 find_package(object_model_msgs REQUIRED)
 
 add_executable(fusion src/fusion.cpp)
-ament_target_dependencies(fusion rclcpp std_msgs)
+ament_target_dependencies(fusion rclcpp object_model_msgs)
 
 install(TARGETS
   fusion
