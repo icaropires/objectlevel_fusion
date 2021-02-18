@@ -10,31 +10,51 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Required packages
 find_package(ament_cmake REQUIRED)
-
 find_package(rclcpp REQUIRED)
 find_package(object_model_msgs REQUIRED)
 
-add_executable(fusion src/fusion.cpp)
-ament_target_dependencies(fusion rclcpp object_model_msgs)
 
-install(TARGETS
-  fusion
-  DESTINATION lib/${PROJECT_NAME}) 
+# ============== Setting as lib ==============
 
-target_include_directories(fusion
+# Setting as lib to reference in testing
+
+file(GLOB SOURCES "src/*.cpp")
+
+add_library(${PROJECT_NAME}_lib ${SOURCES})
+
+ament_target_dependencies(${PROJECT_NAME}_lib rclcpp object_model_msgs)
+
+target_include_directories(${PROJECT_NAME}_lib
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
+# =============================================
 
+
+# ========= Using lib to build bin =========
+
+add_executable(${PROJECT_NAME} src/fusion.cpp)
+target_link_libraries(${PROJECT_NAME} ${PROJECT_NAME}_lib)
+
+install(TARGETS
+  ${PROJECT_NAME}
+  DESTINATION lib/${PROJECT_NAME}) 
+# ==========================================
+
+
+# ============== Checkings ==============
 
 if(BUILD_TESTING)
-  # TODO: setup tests
-  # find_package(ament_gtest)
-  # ament_add_gtest(<tests>)
+  # find_package(ament_lint_auto REQUIRED)
+  # ament_lint_auto_find_test_dependencies()
 
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(meu_teste test/test_alignment.cpp)
+  target_link_libraries(meu_teste ${PROJECT_NAME}_lib)
 endif()
+# ======================================
+
 
 ament_package()
