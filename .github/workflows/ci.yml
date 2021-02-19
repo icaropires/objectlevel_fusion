@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build and run
+        run: docker-compose up -d --build
+
+      - name: Run tests
+        run: | # Could be with >, but like this is more copy friendly
+          docker-compose exec -T fusion_layer \
+             /entrypoint.sh \
+             colcon test --packages-above fusion_layer --return-code-on-test-failure --abort-on-error --event-handlers console_cohesion+
+          
