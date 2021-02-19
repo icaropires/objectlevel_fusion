@@ -22,5 +22,4 @@ jobs:
         run: | # Could be with >, but like this is more copy friendly
           docker-compose exec -T fusion_layer \
              /entrypoint.sh \
-             colcon test --packages-above fusion_layer --return-code-on-test-failure --abort-on-error --event-handlers console_cohesion+
-          
+             colcon test --packages-above fusion_layer --return-code-on-test-failure --event-handlers console_cohesion+
