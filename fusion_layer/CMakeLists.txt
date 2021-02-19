@@ -22,11 +22,11 @@ find_package(object_model_msgs REQUIRED)
 
 file(GLOB SOURCES "src/*.cpp")
 
-add_library(${PROJECT_NAME}_lib ${SOURCES})
+add_library(fusion_lib ${SOURCES})
 
-ament_target_dependencies(${PROJECT_NAME}_lib rclcpp object_model_msgs)
+ament_target_dependencies(fusion_lib rclcpp object_model_msgs)
 
-target_include_directories(${PROJECT_NAME}_lib
+target_include_directories(fusion_lib
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
@@ -35,11 +35,11 @@ target_include_directories(${PROJECT_NAME}_lib
 
 # ========= Using lib to build bin =========
 
-add_executable(${PROJECT_NAME} src/fusion.cpp)
-target_link_libraries(${PROJECT_NAME} ${PROJECT_NAME}_lib)
+add_executable(fusion src/fusion.cpp)
+target_link_libraries(fusion fusion_lib)
 
 install(TARGETS
-  ${PROJECT_NAME}
+  fusion
   DESTINATION lib/${PROJECT_NAME}) 
 # ==========================================
 
@@ -54,7 +54,7 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gmock REQUIRED)
 
   ament_add_gmock(test_alignment test/test_alignment.cpp)
-  target_link_libraries(test_alignment ${PROJECT_NAME}_lib)
+  target_link_libraries(test_alignment fusion_lib)
 endif()
 # ======================================
 
