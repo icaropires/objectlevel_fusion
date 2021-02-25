@@ -13,7 +13,11 @@ endif()
 # Required packages
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+
 find_package(object_model_msgs REQUIRED)
+
+find_package(eigen3_cmake_module REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 
 # ============== Setting as lib ==============
@@ -24,7 +28,7 @@ file(GLOB SOURCES "src/*.cpp")
 
 add_library(fusion_lib ${SOURCES})
 
-ament_target_dependencies(fusion_lib rclcpp object_model_msgs)
+ament_target_dependencies(fusion_lib rclcpp object_model_msgs Eigen3)
 
 target_include_directories(fusion_lib
   PUBLIC
