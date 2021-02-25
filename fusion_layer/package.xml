@@ -8,6 +8,9 @@
   <license>Apache License 2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>eigen3_cmake_module</buildtool_depend>
+
+  <build_depend>eigen</build_depend>
 
   <depend>rclcpp</depend>
   <depend>object_model_msgs</depend>
