@@ -6,6 +6,9 @@
 # VIM
 *.swp
 
+# Jupyter
+.ipynb_checkpoints/
+
 # Prerequisites
 *.d
 
