@@ -59,13 +59,7 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
     object_model_msgs::msg::Track initial_track;
 
     // Fill track state
-    initial_track.state = TemporalAlignmentEKF::format_to_object_model({4, -2, M_PI/2, 5, M_PI/7, 4});
-
-    // Fill state track covariation
-    state_covariance_matrix_t covariance_matrix = state_covariance_matrix_t::Zero();
-    covariance_matrix.diagonal() << 10, 10, 10, 10, 10, 10, 10, 10;
-    float *covariance_carray_ptr = covariance_matrix.data();
-    std::copy(covariance_carray_ptr, covariance_carray_ptr+(state_size*state_size), std::begin(initial_track.covariation));
+    state_t inital_state = TemporalAlignmentEKF::format_to_object_model({4, -2, M_PI/2, 5, M_PI/7, 4});
 
     state_t noise = TemporalAlignmentEKF::format_to_object_model({-1.044, 1.0289, -0.0145, 0.9013, -0.0183, 0.0579});
 
@@ -74,13 +68,13 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
         initial_track.state[i] += noise[i];
     }
 
-    TemporalAlignmentEKF temporal_alignment(initial_track);
+    TemporalAlignmentEKF temporal_alignment(inital_state);
 
     const float delta_t = 0.4571;
     state_t aligned_state = temporal_alignment.align(delta_t);
 
     const float checking_precision = 1e-4;
-    state_t expected = {3.70947952675031, 0.682997338756643, 1.77594232707431, 6.8284, 0.448798950512828, 4.0}; 
+    state_t expected = TemporalAlignmentEKF::format_to_object_model({3.70947952675031, 0.682997338756643, 1.77594232707431, 6.8284, 0.448798950512828, 4.0});
     ASSERT_THAT(
         aligned_state,
         testing::Pointwise(testing::FloatNear(checking_precision), expected)

@@ -10,13 +10,16 @@
 // TODO: create Alignment interface with virtual method align
 class TemporalAlignmentEKF {
     state_t state;
+    std::array<float, 6> state_local_format;
 
-    state_vector_t x_vector;
-    state_covariance_matrix_t P;
-    process_noise_matrix_t Q;
+    Eigen::Matrix<float, 6, 1> x_vector;
+    Eigen::Matrix<float, 6, 6> P;
+    Eigen::Matrix<float, 6, 6> Q;
 
  public:
-    TemporalAlignmentEKF(object_model_msgs::msg::Track initial_track);
+    TemporalAlignmentEKF(state_t initial_state);
+
+    enum StateIndexes {X_IDX, Y_IDX, YAW_IDX, VELOCITY_IDX, YAW_RATE_IDX, ACCELERATION_IDX};
     
     state_t align(float delta_t);
     void update(object_model_msgs::msg::Track measurement, state_squared_t measurement_noise_matrix);
@@ -28,5 +31,5 @@ class TemporalAlignmentEKF {
     state_t get_state() const;
 
  private:
-    void predict();
+    void predict(float delta_t);
 };
