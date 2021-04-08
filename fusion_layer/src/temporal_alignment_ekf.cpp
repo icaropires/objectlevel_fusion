@@ -1,13 +1,12 @@
 #include "fusion_layer/temporal_alignment_ekf.hpp"
+#include <iostream>  // TODO: remove
 
 /*
  * TODO: Should object_model_msgs::msg::Track.state be the P matrix?
  */
-TemporalAlignmentEKF::TemporalAlignmentEKF(state_t initial_state) {
-    state = initial_state;
-
-    state_local_format = format_from_object_model(state);
-    x_vector = Eigen::Map<Eigen::Matrix<float, 6, 1>>(state_local_format.data());
+TemporalAlignerEKF::TemporalAlignerEKF(const state_t& initial_state) {
+    state_local_format = format_from_object_model(initial_state);
+    state_vector = Eigen::Map<Eigen::Matrix<float, 6, 1>>(state_local_format.data());
 
     P = Eigen::Matrix<float, 6, 6>::Zero();
     P.diagonal() << 10, 10, 10, 10, 10, 10;  // TODO: Should this be static for each vehicle?
@@ -16,17 +15,20 @@ TemporalAlignmentEKF::TemporalAlignmentEKF(state_t initial_state) {
     Q = Eigen::Matrix<float, 6, 6>::Zero();
 }
 
-state_t TemporalAlignmentEKF::align(float delta_t) {
+state_t TemporalAlignerEKF::align(float delta_t) {
     predict(delta_t);
 
-    state = format_to_object_model(state_local_format);
-    return state;
+    return get_state();
+}
+
+state_t TemporalAlignerEKF::get_state() const {
+    return format_to_object_model(state_local_format);
 }
 
 /*
 * From [x, y, yaw, v, yaw_rate, a] to [x, y, vx, vy, ax, ay, yaw, yaw_rate]
 */
-state_t TemporalAlignmentEKF::format_to_object_model(std::array<float, 6> state){
+state_t TemporalAlignerEKF::format_to_object_model(std::array<float, 6> state){
     return {
         state[0], state[1], cosf(state[2])*state[3], sinf(state[2])*state[3],
         cosf(state[2])*state[5], sinf(state[2])*state[5], state[2], state[4]
@@ -36,18 +38,14 @@ state_t TemporalAlignmentEKF::format_to_object_model(std::array<float, 6> state)
 /*
 * From [x, y, vx, vy, ax, ay, yaw, yaw_rate] to [x, y, yaw, v, yaw_rate, a]
 */
-std::array<float, 6> TemporalAlignmentEKF::format_from_object_model(state_t state){
+std::array<float, 6> TemporalAlignerEKF::format_from_object_model(state_t state){
     return {
         state[0], state[1], state[6],
         hypotf(state[2], state[3]), state[7], hypotf(state[4], state[5])
     };
 }
 
-state_t TemporalAlignmentEKF::get_state() const {
-    return state;
-}
-
-void TemporalAlignmentEKF::predict(float delta_t) {
+void TemporalAlignerEKF::predict(float delta_t) {
     float dt = delta_t;
     float noise_pos = 0.5*8.8*dt*dt;  // assumes 8.8m/s2 as maximum acceleration, forcing the vehicle
     float noise_course = 0.1*dt;  // assumes 0.1rad/s as maximum turn rate for the vehicle
@@ -145,6 +143,29 @@ void TemporalAlignmentEKF::predict(float delta_t) {
     P = JA*P*JA.transpose() + Q;
 }
 
-void TemporalAlignmentEKF::update(object_model_msgs::msg::Track measurement, state_squared_t measurement_noise_matrix) {
-    state = {2, 2, 2, 2, 2, 2, 2, 2};
+/*
+ * TODO: Should I use the covariation which comes with the measurement (in the track structure) as the R matrix?
+ */
+void TemporalAlignerEKF::update(state_t measurement, const state_squared_t& measurement_noise_matrix) {
+    Eigen::Matrix<float, 6, 6> R = Eigen::Matrix<float, 6, 6>::Zero();
+    R.diagonal() << 2.25, 2.25, 0.0004, 1.0, 0.01, 0.25;
+
+    Eigen::Map<Eigen::Matrix<float, 6, 1>> x(state_local_format.data());
+
+    // Identity because is assumed that for each attribute in state there exists a respective measurement attribute
+    Eigen::Matrix<float, 6, 1> hx = x;  // Not making any transformation and considering that all the atributes are being measured
+    Eigen::Matrix<float, 6, 6> JH = Eigen::Matrix<float, 6, 6>::Identity();
+
+    Eigen::Matrix<float, 6, 6> S = JH*P*JH.transpose() + R;
+    Eigen::Matrix<float, 6, 6> K = (P*JH.transpose()) * S.inverse();
+
+    // Update the estimate
+    auto Z_array = format_from_object_model(measurement);
+    Eigen::Map<Eigen::Matrix<float, 6, 1>> Z(Z_array.data());
+    Eigen::Matrix<float, 6, 1> y = Z - hx;  // Innovation or Residual
+
+    x = x + K*y;
+
+    // Update the error covariance
+    P = Eigen::Matrix<float, 6, 6>::Identity()*P;
 }

@@ -29,7 +29,7 @@ TEST(TestSpatialAlignment, spatiallyAlign) {
 
 TEST(TestTemporalAlignment, convertToObjectModel) {
     std::array<float, 6> state = {4.0, -2.0, M_PI/2, 5.0, M_PI/7, 4.0};
-    state_t result = TemporalAlignmentEKF::format_to_object_model(state);
+    state_t result = TemporalAlignerEKF::format_to_object_model(state);
 
     const float precision = 1e-4;
     state_t expected = {4, -2, 0, 5, 0, 4, M_PI/2, M_PI/7};
@@ -41,7 +41,7 @@ TEST(TestTemporalAlignment, convertToObjectModel) {
 
 TEST(TestTemporalAlignment, convertFromObjectModel) {
     state_t state = {4, -2, 0, 5, 0, 4, M_PI/2, M_PI/7};
-    std::array<float, 6> result = TemporalAlignmentEKF::format_from_object_model(state);
+    std::array<float, 6> result = TemporalAlignerEKF::format_from_object_model(state);
 
     const float precision = 1e-4;
     std::array<float, 6> expected = {4.0, -2.0, M_PI/2, 5.0, M_PI/7, 4.0};
@@ -56,25 +56,25 @@ TEST(TestTemporalAlignment, convertFromObjectModel) {
  * */
 TEST(TestTemporalAlignment, temporalAlignEKF) {
     constexpr int state_size = object_model_msgs::msg::Track::STATE_SIZE;
-    object_model_msgs::msg::Track initial_track;
 
     // Fill track state
-    state_t inital_state = TemporalAlignmentEKF::format_to_object_model({4, -2, M_PI/2, 5, M_PI/7, 4});
+    std::array<float, 6> state_not_object_model = {4, -2, M_PI/2, 5, M_PI/7, 4};
+    std::array<float, 6> noise_not_object_model = {-1.044, 1.0289, -0.0145, 0.9013, -0.0183, 0.0579};
 
-    state_t noise = TemporalAlignmentEKF::format_to_object_model({-1.044, 1.0289, -0.0145, 0.9013, -0.0183, 0.0579});
-
-    // Add noise to track state
+    // Add noise to initial state
     for (int i = 0; i < state_size; ++i) {
-        initial_track.state[i] += noise[i];
+        state_not_object_model[i] += noise_not_object_model[i];
     }
 
-    TemporalAlignmentEKF temporal_alignment(inital_state);
+    state_t initial_state = TemporalAlignerEKF::format_to_object_model(state_not_object_model);
+
+    TemporalAlignerEKF temporal_alignment(initial_state);
 
     const float delta_t = 0.4571;
     state_t aligned_state = temporal_alignment.align(delta_t);
 
     const float checking_precision = 1e-4;
-    state_t expected = TemporalAlignmentEKF::format_to_object_model({3.70947952675031, 0.682997338756643, 1.77594232707431, 6.8284, 0.448798950512828, 4.0});
+    state_t expected = TemporalAlignerEKF::format_to_object_model({2.6810305, 2.13315666, 1.7530774, 7.75616609, 0.43049895, 4.0579});
     ASSERT_THAT(
         aligned_state,
         testing::Pointwise(testing::FloatNear(checking_precision), expected)
@@ -83,13 +83,15 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
     object_model_msgs::msg::Track measured_track;
 
     // Fill measured track
-    measured_track.state = TemporalAlignmentEKF::format_to_object_model({3.7538, 0.4616, 1.761, 6.6948, 0.4488, 4.0});
-    noise = TemporalAlignmentEKF::format_to_object_model({0.7317, 0.8656, 0.0095, -0.5005, 0.0835, -0.4629});
+    std::array<float, 6> measured_state_not_object_model = {3.7538, 0.4616, 1.761, 6.6948, 0.4488, 4.0};
+    noise_not_object_model = {0.7317, 0.8656, 0.0095, -0.5005, 0.0835, -0.4629};
 
     // Add noise to measurement
-    for (int i = 0; i < state_size; ++i) {
-        measured_track.state[i] += noise[i];
+    for (int i = 0; i < 6; ++i) {
+        measured_state_not_object_model[i] += noise_not_object_model[i];
     }
+
+    state_t measured_state = TemporalAlignerEKF::format_to_object_model(measured_state_not_object_model);
 
     // |v| = 1, |a| = 0.5
     constexpr float x_variance = 1.5*1.5, y_variance = 1.5*1.5, vx_variance = 0*0, vy_variance = 1*1;
@@ -103,11 +105,11 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
     float *measurement_carray_ptr = measurement_noise_matrix.data();
     std::copy(measurement_carray_ptr, measurement_carray_ptr+(state_size*state_size), std::begin(measurement_noise_array));
 
-    temporal_alignment.update(measured_track, measurement_noise_array);
+    temporal_alignment.update(measured_state, measurement_noise_array);
 
     state_t updated_state = temporal_alignment.get_state();
 
-    expected = {3.2195997816687, -0.691060294937198, 1.55651945481671, 5.92223886096595, 0.42931542132464, 4.05230530018931};
+    expected = TemporalAlignerEKF::format_to_object_model({4.20009035106605, 1.4065263332970936, 1.7703242101697527, 6.231636758416404, 0.5331593429620153, 3.5436312687426756});
     ASSERT_THAT(
         updated_state,
         testing::Pointwise(testing::FloatNear(checking_precision), expected)
