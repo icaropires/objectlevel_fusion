@@ -2,7 +2,6 @@
 #include <cstring>
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
-#include <Eigen/Dense>
 
 #include "fusion_layer/spatial_alignment.hpp"
 #include "fusion_layer/temporal_alignment_ekf.hpp"
@@ -28,7 +27,7 @@ TEST(TestSpatialAlignment, spatiallyAlign) {
 }
 
 TEST(TestTemporalAlignment, convertToObjectModel) {
-    std::array<float, 6> state = {4.0, -2.0, M_PI/2, 5.0, M_PI/7, 4.0};
+    ctra_array_t state = {4.0, -2.0, M_PI/2, 5.0, M_PI/7, 4.0};
     state_t result = TemporalAlignerEKF::format_to_object_model(state);
 
     const float precision = 1e-4;
@@ -41,10 +40,10 @@ TEST(TestTemporalAlignment, convertToObjectModel) {
 
 TEST(TestTemporalAlignment, convertFromObjectModel) {
     state_t state = {4, -2, 0, 5, 0, 4, M_PI/2, M_PI/7};
-    std::array<float, 6> result = TemporalAlignerEKF::format_from_object_model(state);
+    ctra_array_t result = TemporalAlignerEKF::format_from_object_model(state);
 
     const float precision = 1e-4;
-    std::array<float, 6> expected = {4.0, -2.0, M_PI/2, 5.0, M_PI/7, 4.0};
+    ctra_array_t expected = {4.0, -2.0, M_PI/2, 5.0, M_PI/7, 4.0};
     ASSERT_THAT(
         result,
         testing::Pointwise(testing::FloatNear(precision), expected)
@@ -53,20 +52,24 @@ TEST(TestTemporalAlignment, convertFromObjectModel) {
 
 /*
  * Static values used here were generated at utils/draft_EKF_temporal_alignment.ipynb
+ * Big test but too much work to split it, not worth it
  * */
 TEST(TestTemporalAlignment, temporalAlignEKF) {
     constexpr int state_size = object_model_msgs::msg::Track::STATE_SIZE;
 
+    // ================================ Check first predict =============================
+
     // Fill track state
-    std::array<float, 6> state_not_object_model = {4, -2, M_PI/2, 5, M_PI/7, 4};
-    std::array<float, 6> noise_not_object_model = {-1.044, 1.0289, -0.0145, 0.9013, -0.0183, 0.0579};
+    // CTRA = Constant Turn Rate and Acceleration model currently used by the temporal alignment EKF
+    ctra_array_t state_ctra_format = {4, -2, M_PI/2, 5, M_PI/7, 4};
+    ctra_array_t noise_ctra_format = {-1.044, 1.0289, -0.0145, 0.9013, -0.0183, 0.0579};
 
     // Add noise to initial state
     for (int i = 0; i < state_size; ++i) {
-        state_not_object_model[i] += noise_not_object_model[i];
+        state_ctra_format[i] += noise_ctra_format[i];
     }
 
-    state_t initial_state = TemporalAlignerEKF::format_to_object_model(state_not_object_model);
+    state_t initial_state = TemporalAlignerEKF::format_to_object_model(state_ctra_format);
 
     TemporalAlignerEKF temporal_alignment(initial_state);
 
@@ -80,18 +83,22 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
         testing::Pointwise(testing::FloatNear(checking_precision), expected)
     );
 
+    // ===============================================================================
+
+    // ============================== Check first update =============================
+
     object_model_msgs::msg::Track measured_track;
 
     // Fill measured track
-    std::array<float, 6> measured_state_not_object_model = {3.7538, 0.4616, 1.761, 6.6948, 0.4488, 4.0};
-    noise_not_object_model = {0.7317, 0.8656, 0.0095, -0.5005, 0.0835, -0.4629};
+    ctra_array_t measured_state_ctra_format = {3.7538, 0.4616, 1.761, 6.6948, 0.4488, 4.0};
+    noise_ctra_format = {0.7317, 0.8656, 0.0095, -0.5005, 0.0835, -0.4629};
 
     // Add noise to measurement
-    for (int i = 0; i < 6; ++i) {
-        measured_state_not_object_model[i] += noise_not_object_model[i];
+    for (int i = 0; i < ctra_size_t; ++i) {
+        measured_state_ctra_format[i] += noise_ctra_format[i];
     }
 
-    state_t measured_state = TemporalAlignerEKF::format_to_object_model(measured_state_not_object_model);
+    state_t measured_state = TemporalAlignerEKF::format_to_object_model(measured_state_ctra_format);
 
     // |v| = 1, |a| = 0.5
     constexpr float x_variance = 1.5*1.5, y_variance = 1.5*1.5, vx_variance = 0*0, vy_variance = 1*1;
@@ -100,7 +107,8 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
     state_squared_t measurement_noise_array;
 
     // Fill measurement noises
-    measurement_noise_matrix_t measurement_noise_matrix = measurement_noise_matrix_t::Zero();
+    measurement_noise_matrix_t measurement_noise_matrix;
+    measurement_noise_matrix.setZero();
     measurement_noise_matrix.diagonal() << x_variance, y_variance, vx_variance, vy_variance, ax_variance, ay_variance, yaw_variance, yaw_rate_variance;
     float *measurement_carray_ptr = measurement_noise_matrix.data();
     std::copy(measurement_carray_ptr, measurement_carray_ptr+(state_size*state_size), std::begin(measurement_noise_array));
@@ -114,6 +122,8 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
         updated_state,
         testing::Pointwise(testing::FloatNear(checking_precision), expected)
     );
+
+    // ============================================================================
 }
 
 int main(int argc, char ** argv)
