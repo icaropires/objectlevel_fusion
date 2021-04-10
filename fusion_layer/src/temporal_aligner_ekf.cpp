@@ -1,20 +1,25 @@
-#include "fusion_layer/temporal_alignment_ekf.hpp"
+#include "fusion_layer/temporal_aligner_ekf.hpp"
+
+TemporalAlignerEKF::TemporalAlignerEKF() 
+  : is_initialized(false) {
+}
 
 /*
  * TODO: Should object_model_msgs::msg::Track.state be the P matrix?
  */
-TemporalAlignerEKF::TemporalAlignerEKF(const state_t& initial_state) {
+TemporalAlignerEKF::TemporalAlignerEKF(const state_t& initial_state) 
+  : is_initialized(true), P(ctra_matrix_t::Zero()), Q(ctra_matrix_t::Zero())  {
+
     state_local_format = format_from_object_model(initial_state);
     state_vector = Eigen::Map<ctra_vector_t>(state_local_format.data());
 
-    P = ctra_matrix_t::Zero();
     P.diagonal() << 10, 10, 10, 10, 10, 10;  // TODO: Should this be static for each vehicle?
-
-    // Other values are set in predict()
-    Q = ctra_matrix_t::Zero();
 }
 
 state_t TemporalAlignerEKF::align(float delta_t) {
+    if(not is_initialized) {
+        throw std::runtime_error("TemporalAlignerEKF must be initialized first!");
+    }
     predict(delta_t);
 
     return get_state();
@@ -96,7 +101,7 @@ void TemporalAlignerEKF::predict(float delta_t) {
     pos_x = state_local_format[X_IDX], pos_y = state_local_format[Y_IDX], yaw = state_local_format[YAW_IDX];
     velocity = state_local_format[VELOCITY_IDX], yaw_rate = state_local_format[YAW_RATE_IDX], acceleration = state_local_format[ACCELERATION_IDX];
 
-    // Calculate the Jacobian of the Dynamic Matrix A
+    // Calculate the Jacobian
     float a13 = (
       (-yaw_rate*velocity*cosf(yaw) + acceleration*sinf(yaw)
       - acceleration*sinf(dt*yaw_rate + yaw) + (dt*yaw_rate*acceleration + yaw_rate*velocity)*cosf(dt*yaw_rate
@@ -154,13 +159,12 @@ void TemporalAlignerEKF::predict(float delta_t) {
     P = JA*P*JA.transpose() + Q;
 }
 
-/*
- * TODO: Should I use the covariation which comes with the measurement (in the track structure) as the R matrix?
- */
-void TemporalAlignerEKF::update(const state_t& measurement, const state_squared_t& measurement_noise_matrix) {
-    ctra_matrix_t R;
-    R.setZero();
-    R.diagonal() << 2.25, 2.25, 0.0004, 1.0, 0.01, 0.25;
+void TemporalAlignerEKF::update(const state_t& measurement, const ctra_squared_t& measurement_noise_matrix) {
+    if(not is_initialized) {
+        throw std::runtime_error("TemporalAlignerEKF must be initialized first!");
+    }
+
+    ctra_matrix_t R(measurement_noise_matrix.data());
 
     Eigen::Map<ctra_vector_t> x(state_local_format.data());
 

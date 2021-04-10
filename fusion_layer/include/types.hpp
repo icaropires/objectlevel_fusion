@@ -18,3 +18,4 @@ constexpr int ctra_size_t = 6;
 using ctra_vector_t = Eigen::Matrix<float, ctra_size_t, 1>;
 using ctra_matrix_t = Eigen::Matrix<float, ctra_size_t, ctra_size_t>;
 using ctra_array_t = std::array<float, 6>;
+using ctra_squared_t = std::array<float, ctra_size_t*ctra_size_t>;

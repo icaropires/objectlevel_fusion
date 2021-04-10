@@ -4,7 +4,7 @@
 #include "gmock/gmock.h"
 
 #include "fusion_layer/spatial_alignment.hpp"
-#include "fusion_layer/temporal_alignment_ekf.hpp"
+#include "fusion_layer/temporal_aligner_ekf.hpp"
 #include "object_model_msgs/msg/object_model.hpp"
 
 
@@ -71,10 +71,10 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
 
     state_t initial_state = TemporalAlignerEKF::format_to_object_model(state_ctra_format);
 
-    TemporalAlignerEKF temporal_alignment(initial_state);
+    TemporalAlignerEKF temporal_aligner(initial_state);
 
     const float delta_t = 0.4571;
-    state_t aligned_state = temporal_alignment.align(delta_t);
+    state_t aligned_state = temporal_aligner.align(delta_t);
 
     const float checking_precision = 1e-4;
     state_t expected = TemporalAlignerEKF::format_to_object_model({2.6810305, 2.13315666, 1.7530774, 7.75616609, 0.43049895, 4.0579});
@@ -100,22 +100,26 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
 
     state_t measured_state = TemporalAlignerEKF::format_to_object_model(measured_state_ctra_format);
 
-    // |v| = 1, |a| = 0.5
-    constexpr float x_variance = 1.5*1.5, y_variance = 1.5*1.5, vx_variance = 0*0, vy_variance = 1*1;
-    constexpr float ax_variance = 0*0, ay_variance = 0.5*0.5, yaw_variance = 0.02*0.02, yaw_rate_variance = 0.1*0.1;
+    /*
+     * Measurement noise matrix should be 8x8 (object model format), but as, for now, I don't how
+     * to transform it from 8x8 to 6x6, I'll be using 6x6 until I figure it out or remodel CTRA.
+     */
 
-    state_squared_t measurement_noise_array;
+    constexpr float x_variance = 1.5*1.5, y_variance = 1.5*1.5, v_variance = 1*1;
+    constexpr float a_variance = 0.5*0.5, yaw_variance = 0.02*0.02, yaw_rate_variance = 0.1*0.1;
+
+    ctra_squared_t measurement_noise_array;
 
     // Fill measurement noises
-    measurement_noise_matrix_t measurement_noise_matrix;
+    ctra_matrix_t measurement_noise_matrix;
     measurement_noise_matrix.setZero();
-    measurement_noise_matrix.diagonal() << x_variance, y_variance, vx_variance, vy_variance, ax_variance, ay_variance, yaw_variance, yaw_rate_variance;
+    measurement_noise_matrix.diagonal() << x_variance, y_variance, yaw_variance, v_variance, yaw_rate_variance, a_variance;
     float *measurement_carray_ptr = measurement_noise_matrix.data();
-    std::copy(measurement_carray_ptr, measurement_carray_ptr+(state_size*state_size), std::begin(measurement_noise_array));
+    std::copy(measurement_carray_ptr, measurement_carray_ptr+(ctra_size_t*ctra_size_t), std::begin(measurement_noise_array));
 
-    temporal_alignment.update(measured_state, measurement_noise_array);
+    temporal_aligner.update(measured_state, measurement_noise_array);
 
-    state_t updated_state = temporal_alignment.get_state();
+    state_t updated_state = temporal_aligner.get_state();
 
     expected = TemporalAlignerEKF::format_to_object_model({4.20009035106605, 1.4065263332970936, 1.7703242101697527, 6.231636758416404, 0.5331593429620153, 3.5436312687426756});
     ASSERT_THAT(
