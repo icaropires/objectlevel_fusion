@@ -7,6 +7,8 @@
 #include "fusion_layer/temporal_aligner_ekf.hpp"
 #include "object_model_msgs/msg/object_model.hpp"
 
+#include <iostream>  // TODO: delete
+
 
 void spatial_alignment_check(float delta_x, float delta_y, float theta, const state_t& object_state, const state_t& expected) {
     state_t result;
@@ -61,23 +63,23 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
 
     // Fill track state
     // CTRA = Constant Turn Rate and Acceleration model currently used by the temporal alignment EKF
-    ctra_array_t state_ctra_format = {4, -2, M_PI/2, 5, M_PI/7, 4};
-    ctra_array_t noise_ctra_format = {-1.044, 1.0289, -0.0145, 0.9013, -0.0183, 0.0579};
+    ctra_array_t ctra_state = {4, -2, M_PI/2, 5, M_PI/7, 4};
+    ctra_array_t ctra_noise = {-1.044, 1.0289, -0.0145, 0.9013, -0.0183, 0.0579};
 
     // Add noise to initial state
     for (int i = 0; i < state_size; ++i) {
-        state_ctra_format[i] += noise_ctra_format[i];
+        ctra_state[i] += ctra_noise[i];
     }
 
-    state_t initial_state = TemporalAlignerEKF::format_to_object_model(state_ctra_format);
+    state_t initial_state = TemporalAlignerEKF::format_to_object_model(ctra_state);
 
     TemporalAlignerEKF temporal_aligner(initial_state);
 
-    const float delta_t = 0.4571;
+    float delta_t = 0.4571;
     state_t aligned_state = temporal_aligner.align(delta_t);
 
-    const float checking_precision = 1e-4;
-    state_t expected = TemporalAlignerEKF::format_to_object_model({2.6810305, 2.13315666, 1.7530774, 7.75616609, 0.43049895, 4.0579});
+    const float checking_precision = 1e-3;
+    state_t expected = TemporalAlignerEKF::format_to_object_model({2.68103, 2.13316, 1.75308, 7.75617, 0.4305, 4.0579});
     ASSERT_THAT(
         aligned_state,
         testing::Pointwise(testing::FloatNear(checking_precision), expected)
@@ -90,15 +92,15 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
     object_model_msgs::msg::Track measured_track;
 
     // Fill measured track
-    ctra_array_t measured_state_ctra_format = {3.7538, 0.4616, 1.761, 6.6948, 0.4488, 4.0};
-    noise_ctra_format = {0.7317, 0.8656, 0.0095, -0.5005, 0.0835, -0.4629};
+    ctra_array_t ctra_measured_state = {3.7538, 0.4616, 1.761, 6.6948, 0.4488, 4.0};
+    ctra_noise = {0.7317, 0.8656, 0.0095, -0.5005, 0.0835, -0.4629};
 
     // Add noise to measurement
     for (int i = 0; i < ctra_size_t; ++i) {
-        measured_state_ctra_format[i] += noise_ctra_format[i];
+        ctra_measured_state[i] += ctra_noise[i];
     }
 
-    state_t measured_state = TemporalAlignerEKF::format_to_object_model(measured_state_ctra_format);
+    state_t measured_state = TemporalAlignerEKF::format_to_object_model(ctra_measured_state);
 
     /*
      * Measurement noise matrix should be 8x8 (object model format), but as, for now, I don't how
@@ -121,12 +123,45 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
 
     state_t updated_state = temporal_aligner.get_state();
 
-    expected = TemporalAlignerEKF::format_to_object_model({4.20009035106605, 1.4065263332970936, 1.7703242101697527, 6.231636758416404, 0.5331593429620153, 3.5436312687426756});
+    expected = TemporalAlignerEKF::format_to_object_model({4.20009, 1.40653, 1.77032, 6.23164, 0.53316, 3.54363});
     ASSERT_THAT(
         updated_state,
         testing::Pointwise(testing::FloatNear(checking_precision), expected)
     );
 
+    // ============================================================================
+
+    // ================================ Check second predict ======================
+    delta_t = 0.5364;
+    aligned_state = temporal_aligner.align(delta_t);
+    
+    expected = TemporalAlignerEKF::format_to_object_model({2.88776, 5.01469, 2.05631, 8.13244, 0.53316, 3.54363});
+    ASSERT_THAT(
+        aligned_state,
+        testing::Pointwise(testing::FloatNear(checking_precision), expected)
+    );
+    // ============================================================================
+
+    // ================================ Check second update =======================
+
+    ctra_measured_state = {2.8449, 3.5203, 1.9512, 8.3896, 0.4488, 4.0};
+    ctra_noise = {-0.0571, -1.0837, -0.0015, 0.4288, -0.0634, -0.0808};
+
+    for (int i = 0; i < ctra_size_t; ++i) {
+        ctra_measured_state[i] += ctra_noise[i];
+    }
+
+    measured_state = TemporalAlignerEKF::format_to_object_model(ctra_measured_state);
+
+    temporal_aligner.update(measured_state, measurement_noise_array);
+
+    updated_state = temporal_aligner.get_state();
+
+    expected = TemporalAlignerEKF::format_to_object_model({2.8853, 3.45836, 1.95632, 8.78508, 0.38746, 3.79022});
+    ASSERT_THAT(
+        updated_state,
+        testing::Pointwise(testing::FloatNear(checking_precision), expected)
+    );
     // ============================================================================
 }
 
