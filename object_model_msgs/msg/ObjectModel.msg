@@ -3,6 +3,6 @@ std_msgs/Header header
 
 Track track
 Dimension dimension
-ExistenceProbability exitence_probability
+ExistenceProbability existence_probability
 Classification classification
 ShapeFeatures shape_features

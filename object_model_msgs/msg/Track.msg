@@ -8,6 +8,9 @@ uint8 STATE_ACCELERATION_Y_IDX = 5
 uint8 STATE_YAW_IDX = 6
 uint8 STATE_YAW_RATE_IDX = 7
 
+uint8 STATE_SIZE = 8
+
+# Size is STATE_SIZE
 float32[8] state # [x, y, velocity x, velocity y, acceleration x, acceleration y, yaw, yaw rate]
 
 # Square matrix, size is the size of state squared
