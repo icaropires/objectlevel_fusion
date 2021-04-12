@@ -1,22 +1,18 @@
 #include "fusion_layer/fusion.hpp"
 
 Fusion::Fusion()
-  : Node("fusion_layer")
+  : Node("fusion_layer"),
+    input_topic("objectlevel_fusion/fusion_layer/fusion/submit"),
+    is_first_message(true), time_last_msg(0)
 {
-    // TODO: Make it attribute
-    const std::string topic = "objectlevel_fusion/fusion_layer/fusion/submit";
-
     subscription_ = this->create_subscription<object_model_msgs::msg::ObjectModel>(
-        topic, 10, std::bind(&Fusion::topic_callback, this, _1)
+        input_topic, 10, std::bind(&Fusion::topic_callback, this, _1)
     );
 
 }
 
-std::string Fusion::state_to_str(const state_t& state) {
+void Fusion::state_to_str(const state_t& state, char *c_str) {
     using namespace object_model_msgs::msg;
-
-    static constexpr size_t maximum_str_size = 200;
-    char c_str[maximum_str_size]; 
 
     sprintf(c_str,
             "X = %0.3f, Y = %0.3f, Vx = %0.3f, Vy = %0.3f, Ax = %0.3f, Ay = %0.3f, Yaw = %0.3f, Yaw Rate = %0.3f",
@@ -28,24 +24,77 @@ std::string Fusion::state_to_str(const state_t& state) {
             state[Track::STATE_ACCELERATION_Y_IDX],
             state[Track::STATE_YAW_IDX],
             state[Track::STATE_YAW_RATE_IDX]);
-
-    return std::string(c_str);
 }
 
-void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) const
+void Fusion::log_state(char *label, const state_t& state) {
+    static constexpr size_t maximum_str_size = 200;
+    char c_str[maximum_str_size];
+
+    state_to_str(state, c_str);
+    RCLCPP_INFO(this->get_logger(), label, c_str);
+}
+
+/*
+ * return: message timestamp in nanoseconds
+ */
+uint64_t Fusion::get_timestamp(const object_model_msgs::msg::ObjectModel::SharedPtr msg)
+{
+    uint64_t seconds_as_nanoseconds = static_cast<uint64_t>(msg->header.stamp.sec * static_cast<uint64_t>(1e9));
+    uint64_t nanoseconds = static_cast<uint64_t>(msg->header.stamp.nanosec);
+
+    return seconds_as_nanoseconds + nanoseconds;
+}
+
+void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg)
 {
     using namespace object_model_msgs::msg;
 
-    state_t state = msg->track.state;
+    state_t received_state = msg->track.state;
 
-    auto state_str = state_to_str(state);
-    RCLCPP_INFO(this->get_logger(), "Received message from: %s\nState:\n %s", msg->header.frame_id.c_str(), state_str.c_str());
+    RCLCPP_INFO(this->get_logger(), "Received message from: %s", msg->header.frame_id.c_str());
+    log_state((char *) "\n==> Received state:\n %s", received_state);
 
-    float x = 1.0, y = 1.0, theta = 90;
-    state_t state_spatially_aligned;
-    spatially_align(x, y, theta, state, state_spatially_aligned);
-    state_str = state_to_str(state_spatially_aligned);
-    RCLCPP_INFO(this->get_logger(), "\nState spatially aligned:\n %s", state_str.c_str());
+    float x = 1.0, y = 1.0, theta = M_PI/4;
+    state_t spatially_aligned_state;
+    spatially_align(x, y, theta, received_state, spatially_aligned_state);
+
+    log_state((char *) "\n==> State spatially aligned:\n %s", spatially_aligned_state);
+
+    state_t temporally_aligned_state;
+
+    if(not is_first_message) {
+        uint64_t delta_t_int = get_timestamp(msg) - time_last_msg;
+        float delta_t = static_cast<float>(delta_t_int) / 1e9;  // seconds
+
+        temporally_aligned_state = temporal_aligner.align(delta_t);
+
+        log_state((char *) "\n==> State temporally aligned:\n %s", temporally_aligned_state);
+    } else {
+        temporal_aligner = TemporalAlignerEKF(spatially_aligned_state);
+
+        is_first_message = false;
+        time_last_msg = get_timestamp(msg);
+        RCLCPP_INFO(this->get_logger(), "Temporal Aligner intialized\n\n");
+        return;
+    }
+
+    // Final state of the object
+    // Must be updated in order to have the state after all preprocessing and fusion
+    state_t final_state = temporally_aligned_state;
+
+    // Filling measurement_noise_matrix here
+    // TODO: remove, once sensor registration is completed
+    ctra_matrix_t measurement_noise_matrix;
+    ctra_squared_t measurement_noise_array;
+    measurement_noise_matrix.setZero();
+    measurement_noise_matrix.diagonal() << 2.25, 2.25, 0.0004, 1.0, 0.01, 0.25;
+    float *measurement_carray_ptr = measurement_noise_matrix.data();
+    std::copy(measurement_carray_ptr, measurement_carray_ptr+(ctra_size_t*ctra_size_t), std::begin(measurement_noise_array));
+
+    temporal_aligner.update(final_state, measurement_noise_array);
+
+    time_last_msg = get_timestamp(msg);
+    RCLCPP_INFO(this->get_logger(), "\n\n");
 }
 
 // One main for each node

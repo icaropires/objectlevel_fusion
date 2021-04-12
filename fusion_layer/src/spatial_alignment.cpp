@@ -1,6 +1,8 @@
 #include "fusion_layer/spatial_alignment.hpp"
 
 void spatially_align(float delta_x, float delta_y, float theta, const state_t& object_state, state_t& result) {
+    theta = fmod(theta, 2.0 * M_PI);
+
     auto sin_theta = static_cast<float>(sin(theta));
     auto cos_theta = static_cast<float>(cos(theta));
 

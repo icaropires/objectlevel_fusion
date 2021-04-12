@@ -14,8 +14,7 @@
 class TemporalAlignerEKF : public TemporalAligner {
     bool is_initialized;
 
-    ctra_array_t state_local_format;
-    ctra_vector_t state_vector;
+    ctra_array_t state_array;
 
     ctra_matrix_t P;
     ctra_matrix_t Q;

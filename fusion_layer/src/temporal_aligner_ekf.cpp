@@ -10,8 +10,7 @@ TemporalAlignerEKF::TemporalAlignerEKF()
 TemporalAlignerEKF::TemporalAlignerEKF(const state_t& initial_state) 
   : is_initialized(true), P(ctra_matrix_t::Zero()), Q(ctra_matrix_t::Zero())  {
 
-    state_local_format = format_from_object_model(initial_state);
-    state_vector = Eigen::Map<ctra_vector_t>(state_local_format.data());
+    state_array = format_from_object_model(initial_state);
 
     P.diagonal() << 10, 10, 10, 10, 10, 10;  // TODO: Should this be static for each vehicle?
 }
@@ -26,7 +25,7 @@ state_t TemporalAlignerEKF::align(float delta_t) {
 }
 
 state_t TemporalAlignerEKF::get_state() const {
-    return format_to_object_model(state_local_format);
+    return format_to_object_model(state_array);
 }
 
 /*
@@ -62,44 +61,44 @@ ctra_array_t TemporalAlignerEKF::format_from_object_model(const state_t& state){
 }
 
 void TemporalAlignerEKF::predict(float delta_t) {
-    float dt = delta_t;
-    float noise_pos = 0.5*8.8*dt*dt;  // assumes 8.8m/s2 as maximum acceleration, forcing the vehicle
-    float noise_course = 0.1*dt;  // assumes 0.1rad/s as maximum turn rate for the vehicle
-    float noise_velocity= 8.8*dt;  // assumes 8.8m/s2 as maximum acceleration, forcing the vehicle
-    float noise_yawrate = 1.0*dt;  // assumes 1.0rad/s2 as the maximum turn rate acceleration for the vehicle
-    float noise_accel = 0.5;  // assumes 0.5m/s2
+    const float dt = delta_t;
+    const float noise_pos = 0.5*8.8*dt*dt;  // assumes 8.8m/s2 as maximum acceleration, forcing the vehicle
+    const float noise_course = 0.1*dt;  // assumes 0.1rad/s as maximum turn rate for the vehicle
+    const float noise_velocity= 8.8*dt;  // assumes 8.8m/s2 as maximum acceleration, forcing the vehicle
+    const float noise_yawrate = 1.0*dt;  // assumes 1.0rad/s2 as the maximum turn rate acceleration for the vehicle
+    const float noise_accel = 0.5;  // assumes 0.5m/s2
 
     // TODO: Can be improved and calibratred
     Q.diagonal() << noise_pos*noise_pos, noise_pos*noise_pos, noise_course*noise_course, noise_velocity*noise_velocity, noise_yawrate*noise_yawrate, noise_accel*noise_accel;
 
-    float pos_x = state_local_format[X_IDX], pos_y = state_local_format[Y_IDX], yaw = state_local_format[YAW_IDX];
-    float velocity = state_local_format[VELOCITY_IDX], yaw_rate = state_local_format[YAW_RATE_IDX], acceleration = state_local_format[ACCELERATION_IDX];
+    float pos_x = state_array[X_IDX], pos_y = state_array[Y_IDX], yaw = state_array[YAW_IDX];
+    float velocity = state_array[VELOCITY_IDX], yaw_rate = state_array[YAW_RATE_IDX], acceleration = state_array[ACCELERATION_IDX];
 
     if(abs(yaw_rate) <  0.00001) {
         yaw_rate = 0.00001;
     }
 
-    state_local_format[X_IDX] = pos_x + (1 / pow(yaw_rate, 2)) *
+    state_array[X_IDX] = pos_x + (1 / pow(yaw_rate, 2)) *
         (
             (velocity*yaw_rate + acceleration * yaw_rate * dt) * sinf(yaw + yaw_rate* dt)
             + acceleration * cosf(yaw + yaw_rate * dt)
             - velocity * yaw_rate * sinf(yaw) - acceleration * cosf(yaw)
         );
 
-    state_local_format[Y_IDX] = pos_y + (1 / pow(yaw_rate, 2)) *
+    state_array[Y_IDX] = pos_y + (1 / pow(yaw_rate, 2)) *
         (
             (-velocity*yaw_rate - acceleration * yaw_rate * dt) * cosf(yaw + yaw_rate* dt)
             + acceleration * sinf(yaw + yaw_rate * dt)
             + velocity * yaw_rate * cosf(yaw) - acceleration * sinf(yaw)
         );
 
-    state_local_format[YAW_IDX] = fmod((yaw + yaw_rate * dt + M_PI), (2.0 * M_PI)) - M_PI;
-    state_local_format[VELOCITY_IDX] = velocity + acceleration * dt;
-    state_local_format[YAW_RATE_IDX] = yaw_rate;
-    state_local_format[ACCELERATION_IDX] = acceleration;
+    state_array[YAW_IDX] = fmod((yaw + yaw_rate * dt + M_PI), (2.0 * M_PI)) - M_PI;
+    state_array[VELOCITY_IDX] = velocity + acceleration * dt;
+    state_array[YAW_RATE_IDX] = yaw_rate;
+    state_array[ACCELERATION_IDX] = acceleration;
 
-    pos_x = state_local_format[X_IDX], pos_y = state_local_format[Y_IDX], yaw = state_local_format[YAW_IDX];
-    velocity = state_local_format[VELOCITY_IDX], yaw_rate = state_local_format[YAW_RATE_IDX], acceleration = state_local_format[ACCELERATION_IDX];
+    pos_x = state_array[X_IDX], pos_y = state_array[Y_IDX], yaw = state_array[YAW_IDX];
+    velocity = state_array[VELOCITY_IDX], yaw_rate = state_array[YAW_RATE_IDX], acceleration = state_array[ACCELERATION_IDX];
 
     // Calculate the Jacobian
     float a13 = (
@@ -166,7 +165,7 @@ void TemporalAlignerEKF::update(const state_t& measurement, const ctra_squared_t
 
     ctra_matrix_t R(measurement_noise_matrix.data());
 
-    Eigen::Map<ctra_vector_t> x(state_local_format.data());
+    Eigen::Map<ctra_vector_t> x(state_array.data());
 
     ctra_vector_t hx = x;  // Not making any transformation and considering that all the atributes are being measured
 
