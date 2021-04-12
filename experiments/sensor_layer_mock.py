@@ -14,7 +14,7 @@ class CameraSensor(Node):
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
         self.random_generator = np.random.default_rng()
 
-        self.time_last_msg = self.get_clock().now().to_msg()
+        self.time_last_msg = self.get_clock().now()
         self.pos = 0
         self.velocity = 0
         self.acceleration = 0.5
@@ -24,10 +24,9 @@ class CameraSensor(Node):
         self.acc_function = self._acc_increasing
 
     def _get_delta_t(self, time):
-        last = self.time_last_msg.sec * 10**9 + self.time_last_msg.nanosec
-        time = time.sec * 10**9 + time.nanosec
+        delta_t_seconds = time.nanoseconds - self.time_last_msg.nanoseconds
 
-        return (time - last) / 10**9
+        return delta_t_seconds / 10**9
 
     def _add_noise(self, msg):
         sensors_std = [1.5, 1.5, 0.9998, 0.02, 0.4999, 0.01, 0.02, 0.1]
@@ -45,7 +44,7 @@ class CameraSensor(Node):
         return self.random_generator.random() * 0.05 - 0.03
 
     def timer_callback(self):
-        now = self.get_clock().now().to_msg()
+        now = self.get_clock().now()
         delta_t = self._get_delta_t(now)
         self.time_last_msg = now
 
@@ -59,7 +58,6 @@ class CameraSensor(Node):
             self.acc_function = self._acc_decreasing
 
         self.acceleration += self.acc_function()
-        print('Acc after', self.acceleration)
 
         self.yaw += delta_t * self.yaw_rate
         self.yaw = self.yaw % (2 * np.pi)
@@ -68,7 +66,7 @@ class CameraSensor(Node):
 
         msg = ObjectModel()
         msg.header.frame_id = self.get_name()
-        msg.header.stamp = self.time_last_msg
+        msg.header.stamp = self.time_last_msg.to_msg()
 
         msg.track.state[Track.STATE_X_IDX] = self.pos * np.cos(self.yaw)
         msg.track.state[Track.STATE_Y_IDX] = self.pos * np.sin(self.yaw)

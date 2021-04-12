@@ -39,10 +39,8 @@ void Fusion::log_state(char *label, const state_t& state) {
  */
 uint64_t Fusion::get_timestamp(const object_model_msgs::msg::ObjectModel::SharedPtr msg)
 {
-    uint64_t seconds_as_nanoseconds = static_cast<uint64_t>(msg->header.stamp.sec * static_cast<uint64_t>(1e9));
-    uint64_t nanoseconds = static_cast<uint64_t>(msg->header.stamp.nanosec);
-
-    return seconds_as_nanoseconds + nanoseconds;
+    auto time = rclcpp::Time(msg->header.stamp);
+    return time.nanoseconds();
 }
 
 void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg)
