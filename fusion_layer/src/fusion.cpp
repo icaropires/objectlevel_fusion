@@ -5,42 +5,25 @@ Fusion::Fusion()
     input_topic("objectlevel_fusion/fusion_layer/fusion/submit"),
     is_first_message(true), time_last_msg(0)
 {
-    subscription_ = this->create_subscription<object_model_msgs::msg::ObjectModel>(
-        input_topic, 10, std::bind(&Fusion::topic_callback, this, _1)
+    register_sensor_srv_ = create_service<fusion_layer::srv::RegisterSensor>("register_sensor",
+            std::bind(&Fusion::register_sensor, this, std::placeholders::_1, std::placeholders::_2));
+
+    subscription_ = create_subscription<object_model_msgs::msg::ObjectModel>(
+        input_topic, 10, std::bind(&Fusion::topic_callback, this, std::placeholders::_1)
     );
-
 }
 
-void Fusion::state_to_str(const state_t& state, char *c_str) {
-    using namespace object_model_msgs::msg;
-
-    sprintf(c_str,
-            "X = %0.3f, Y = %0.3f, Vx = %0.3f, Vy = %0.3f, Ax = %0.3f, Ay = %0.3f, Yaw = %0.3f, Yaw Rate = %0.3f",
-            state[Track::STATE_X_IDX],
-            state[Track::STATE_Y_IDX],
-            state[Track::STATE_VELOCITY_X_IDX],
-            state[Track::STATE_VELOCITY_Y_IDX],
-            state[Track::STATE_ACCELERATION_X_IDX],
-            state[Track::STATE_ACCELERATION_Y_IDX],
-            state[Track::STATE_YAW_IDX],
-            state[Track::STATE_YAW_RATE_IDX]);
+Fusion::~Fusion() {
+    rclcpp::shutdown();
 }
 
-void Fusion::log_state(char *label, const state_t& state) {
-    static constexpr size_t maximum_str_size = 200;
-    char c_str[maximum_str_size];
-
-    state_to_str(state, c_str);
-    RCLCPP_INFO(this->get_logger(), label, c_str);
-}
-
-/*
- * return: message timestamp in nanoseconds
- */
-uint64_t Fusion::get_timestamp(const object_model_msgs::msg::ObjectModel::SharedPtr msg)
+void Fusion::register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSensor::Request> request,
+          std::shared_ptr<fusion_layer::srv::RegisterSensor::Response> response)
 {
-    auto time = rclcpp::Time(msg->header.stamp);
-    return time.nanoseconds();
+  response->sum = request->a + request->b + request->c;
+
+  RCLCPP_INFO(get_logger(), "Incoming request\na: %ld" " b: %ld" " c: %ld", request->a, request->b, request->c);
+  RCLCPP_INFO(get_logger(), "sending back response: [%ld]", (long int)response->sum);
 }
 
 void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg)
@@ -49,7 +32,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 
     state_t received_state = msg->track.state;
 
-    RCLCPP_INFO(this->get_logger(), "Received message from: %s", msg->header.frame_id.c_str());
+    RCLCPP_INFO(get_logger(), "Received message from: %s", msg->header.frame_id.c_str());
     log_state((char *) "\n==> Received state:\n %s", received_state);
 
     float x = 1.0, y = 1.0, theta = M_PI/4;
@@ -72,7 +55,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 
         is_first_message = false;
         time_last_msg = get_timestamp(msg);
-        RCLCPP_INFO(this->get_logger(), "Temporal Aligner intialized\n\n");
+        RCLCPP_INFO(get_logger(), "Temporal Aligner intialized\n\n");
         return;
     }
 
@@ -92,7 +75,39 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     temporal_aligner.update(final_state, measurement_noise_array);
 
     time_last_msg = get_timestamp(msg);
-    RCLCPP_INFO(this->get_logger(), "\n\n");
+    RCLCPP_INFO(get_logger(), "\n\n");
+}
+
+void Fusion::state_to_str(const state_t& state, char *c_str) {
+    using namespace object_model_msgs::msg;
+
+    sprintf(c_str,
+            "X = %0.3f, Y = %0.3f, Vx = %0.3f, Vy = %0.3f, Ax = %0.3f, Ay = %0.3f, Yaw = %0.3f, Yaw Rate = %0.3f",
+            state[Track::STATE_X_IDX],
+            state[Track::STATE_Y_IDX],
+            state[Track::STATE_VELOCITY_X_IDX],
+            state[Track::STATE_VELOCITY_Y_IDX],
+            state[Track::STATE_ACCELERATION_X_IDX],
+            state[Track::STATE_ACCELERATION_Y_IDX],
+            state[Track::STATE_YAW_IDX],
+            state[Track::STATE_YAW_RATE_IDX]);
+}
+
+void Fusion::log_state(char *label, const state_t& state) {
+    static constexpr size_t maximum_str_size = 200;
+    char c_str[maximum_str_size];
+
+    state_to_str(state, c_str);
+    RCLCPP_INFO(get_logger(), label, c_str);
+}
+
+/*
+ * return: message timestamp in nanoseconds
+ */
+uint64_t Fusion::get_timestamp(const object_model_msgs::msg::ObjectModel::SharedPtr msg)
+{
+    auto time = rclcpp::Time(msg->header.stamp);
+    return time.nanoseconds();
 }
 
 // One main for each node
@@ -100,7 +115,6 @@ int main(int argc, char * argv[])
 {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<Fusion>());
-    rclcpp::shutdown();
 
     return 0;
 }
