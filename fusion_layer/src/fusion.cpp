@@ -5,10 +5,11 @@ Fusion::Fusion()
     input_topic("objectlevel_fusion/fusion_layer/fusion/submit"),
     is_first_message(true), time_last_msg(0)
 {
-    const std::string srv_path = "fusion_layer/register_sensor";
-
-    register_sensor_srv_ = create_service<fusion_layer::srv::RegisterSensor>(srv_path,
+    register_sensor_srv_ = create_service<fusion_layer::srv::RegisterSensor>("fusion_layer/register_sensor",
             std::bind(&Fusion::register_sensor, this, std::placeholders::_1, std::placeholders::_2));
+
+    remove_sensor_srv_ = create_service<fusion_layer::srv::RemoveSensor>("fusion_layer/remove_sensor",
+            std::bind(&Fusion::remove_sensor, this, std::placeholders::_1, std::placeholders::_2));
 
     subscription_ = create_subscription<object_model_msgs::msg::ObjectModel>(
         input_topic, 10, std::bind(&Fusion::topic_callback, this, std::placeholders::_1)
@@ -25,6 +26,16 @@ void Fusion::register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSe
     auto sensor = std::make_shared<Sensor> (request->name, request->x, request->y, request->angle, request->capable, request->measurement_noise_matrix);
     sensors[sensor->get_name()] = sensor;
     response->status = "Sensor '" + sensor->get_name() + "' registered successfully!";
+
+    RCLCPP_INFO(get_logger(), response->status);
+}
+
+void Fusion::remove_sensor(const std::shared_ptr<fusion_layer::srv::RemoveSensor::Request> request,
+          std::shared_ptr<fusion_layer::srv::RemoveSensor::Response> response) {
+
+    sensors.erase(request->name);
+
+    response->status = "Sensor '" + request->name + "' removed successfully!";
 
     RCLCPP_INFO(get_logger(), response->status);
 }
@@ -78,6 +89,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     temporal_aligner.update(final_state, measurement_noise_array);
 
     time_last_msg = get_timestamp(msg);
+    RCLCPP_INFO(get_logger(), "Number of registered sensors: %d", sensors.size());
     RCLCPP_INFO(get_logger(), "\n\n");
 }
 

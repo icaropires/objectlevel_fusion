@@ -30,6 +30,7 @@ add_library(fusion_lib ${SOURCES})
 
 rosidl_generate_interfaces(${PROJECT_NAME}
     "srv/RegisterSensor.srv"
+    "srv/RemoveSensor.srv"
  )
 
 ament_target_dependencies(fusion_lib rclcpp object_model_msgs Eigen3)

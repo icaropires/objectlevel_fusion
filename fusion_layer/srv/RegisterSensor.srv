@@ -1,5 +1,5 @@
 # Service to register sensors in the fusion layer
-# sensors not registered will have its data ignored
+# sensors not registered will have its data ignored in fusion
 string name
 
 # All relative to the vehicle coordinate frame
