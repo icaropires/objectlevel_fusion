@@ -5,7 +5,9 @@ Fusion::Fusion()
     input_topic("objectlevel_fusion/fusion_layer/fusion/submit"),
     is_first_message(true), time_last_msg(0)
 {
-    register_sensor_srv_ = create_service<fusion_layer::srv::RegisterSensor>("register_sensor",
+    const std::string srv_path = "fusion_layer/register_sensor";
+
+    register_sensor_srv_ = create_service<fusion_layer::srv::RegisterSensor>(srv_path,
             std::bind(&Fusion::register_sensor, this, std::placeholders::_1, std::placeholders::_2));
 
     subscription_ = create_subscription<object_model_msgs::msg::ObjectModel>(
@@ -20,10 +22,11 @@ Fusion::~Fusion() {
 void Fusion::register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSensor::Request> request,
           std::shared_ptr<fusion_layer::srv::RegisterSensor::Response> response)
 {
-  response->sum = request->a + request->b + request->c;
+    auto sensor = std::make_shared<Sensor> (request->name, request->x, request->y, request->angle, request->capable, request->measurement_noise_matrix);
+    sensors[sensor->get_name()] = sensor;
+    response->status = "Sensor '" + sensor->get_name() + "' registered successfully!";
 
-  RCLCPP_INFO(get_logger(), "Incoming request\na: %ld" " b: %ld" " c: %ld", request->a, request->b, request->c);
-  RCLCPP_INFO(get_logger(), "sending back response: [%ld]", (long int)response->sum);
+    RCLCPP_INFO(get_logger(), response->status);
 }
 
 void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg)
