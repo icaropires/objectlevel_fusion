@@ -20,28 +20,7 @@ Fusion::~Fusion() {
     rclcpp::shutdown();
 }
 
-void Fusion::register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSensor::Request> request,
-          std::shared_ptr<fusion_layer::srv::RegisterSensor::Response> response)
-{
-    auto sensor = std::make_shared<Sensor> (request->name, request->x, request->y, request->angle, request->capable, request->measurement_noise_matrix);
-    sensors[sensor->get_name()] = sensor;
-    response->status = "Sensor '" + sensor->get_name() + "' registered successfully!";
-
-    RCLCPP_INFO(get_logger(), response->status);
-}
-
-void Fusion::remove_sensor(const std::shared_ptr<fusion_layer::srv::RemoveSensor::Request> request,
-          std::shared_ptr<fusion_layer::srv::RemoveSensor::Response> response) {
-
-    sensors.erase(request->name);
-
-    response->status = "Sensor '" + request->name + "' removed successfully!";
-
-    RCLCPP_INFO(get_logger(), response->status);
-}
-
-void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg)
-{
+void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) {
     using namespace object_model_msgs::msg;
 
     state_t received_state = msg->track.state;
@@ -91,6 +70,57 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     time_last_msg = get_timestamp(msg);
     RCLCPP_INFO(get_logger(), "Number of registered sensors: %d", sensors.size());
     RCLCPP_INFO(get_logger(), "\n\n");
+}
+
+void Fusion::register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSensor::Request> request,
+          std::shared_ptr<fusion_layer::srv::RegisterSensor::Response> response) {
+    constexpr int min_name_size = 2, max_name_size = 30;
+
+    try{
+        if(request->name.size() < min_name_size || request->name.size() > max_name_size) {
+            auto error_msg = "Failed to register sensor! Name should have between " + std::to_string(min_name_size) + " and " + std::to_string(max_name_size) + " characters.";
+            throw std::runtime_error(error_msg);
+        }
+
+        if(sensors.find(request->name) != sensors.end()) {
+            throw std::runtime_error("Sensor '" + request->name + "' already registered! Pick another name.");
+        }
+
+        auto sensor = std::make_shared<Sensor> (request->name, request->x, request->y, request->angle, request->capable, request->measurement_noise_matrix);
+
+        sensors[sensor->get_name()] = sensor;
+
+        response->status = "Sensor '" + sensor->get_name() + "' registered successfully!";
+    }
+    catch (std::runtime_error& e) {
+        response->status = e.what();
+    }
+    catch(std::exception&) {
+        response->status = "Unexpected error when registering sensor!";
+    }
+
+    RCLCPP_INFO(get_logger(), response->status);
+}
+
+void Fusion::remove_sensor(const std::shared_ptr<fusion_layer::srv::RemoveSensor::Request> request,
+          std::shared_ptr<fusion_layer::srv::RemoveSensor::Response> response) {
+
+    try {
+        if (sensors.find(request->name) == sensors.end()) {
+           throw std::runtime_error("Failed to remove sensor! Sensor '" + request->name + "' not registered."); 
+        }
+
+        sensors.erase(request->name);
+        response->status = "Sensor '" + request->name + "' removed successfully!";
+    }
+    catch (std::runtime_error& e) {
+        response->status = e.what();
+    }
+    catch(std::exception&) {
+        response->status = "Unexpected error when removing sensor!";
+    }
+
+    RCLCPP_INFO(get_logger(), response->status);
 }
 
 void Fusion::state_to_str(const state_t& state, char *c_str) {

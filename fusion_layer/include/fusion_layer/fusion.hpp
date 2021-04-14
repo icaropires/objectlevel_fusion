@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <cstdio>
+#include <stdexcept>
 
 #include "rclcpp/rclcpp.hpp"
 #include "fusion_layer/srv/register_sensor.hpp"
