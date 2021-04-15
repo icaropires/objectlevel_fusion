@@ -9,8 +9,6 @@
 #include "object_model_msgs/msg/object_model.hpp"
 #include "types.hpp"
 
-// TODO: create Alignment interface with virtual method align
-// TODO: create constant to substitute all the 6s
 class TemporalAlignerEKF : public TemporalAligner {
     bool is_initialized;
 

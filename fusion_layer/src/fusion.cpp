@@ -23,14 +23,21 @@ Fusion::~Fusion() {
 void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) {
     using namespace object_model_msgs::msg;
 
+    const std::string sensor_name = msg->header.frame_id;
     state_t received_state = msg->track.state;
 
-    RCLCPP_INFO(get_logger(), "Received message from: %s", msg->header.frame_id.c_str());
+    RCLCPP_INFO(get_logger(), "Received message from: %s", sensor_name.c_str());
+    if(sensors.find(sensor_name) == sensors.end()) {
+        RCLCPP_WARN(get_logger(), "Sensor '%s' not registered, ignoring message..", sensor_name.c_str());
+        return;
+    }
+
     log_state((char *) "\n==> Received state:\n %s", received_state);
 
-    float x = 1.0, y = 1.0, theta = M_PI/4;
+    auto sensor = sensors[sensor_name];
+
     state_t spatially_aligned_state;
-    spatially_align(x, y, theta, received_state, spatially_aligned_state);
+    spatially_align(sensor->get_x(), sensor->get_y(), sensor->get_angle(), received_state, spatially_aligned_state);
 
     log_state((char *) "\n==> State spatially aligned:\n %s", spatially_aligned_state);
 
@@ -53,19 +60,10 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     }
 
     // Final state of the object
-    // Must be updated in order to have the state after all preprocessing and fusion
+    // Must be updated when there are more preprocessing/fusion steps implemented
     state_t final_state = temporally_aligned_state;
 
-    // Filling measurement_noise_matrix here
-    // TODO: remove, once sensor registration is completed
-    ctra_matrix_t measurement_noise_matrix;
-    ctra_squared_t measurement_noise_array;
-    measurement_noise_matrix.setZero();
-    measurement_noise_matrix.diagonal() << 2.25, 2.25, 0.0004, 1.0, 0.01, 0.25;
-    float *measurement_carray_ptr = measurement_noise_matrix.data();
-    std::copy(measurement_carray_ptr, measurement_carray_ptr+(ctra_size_t*ctra_size_t), std::begin(measurement_noise_array));
-
-    temporal_aligner.update(final_state, measurement_noise_array);
+    temporal_aligner.update(final_state, sensor->measurement_noise_matrix);
 
     time_last_msg = get_timestamp(msg);
     RCLCPP_INFO(get_logger(), "Number of registered sensors: %d", sensors.size());
