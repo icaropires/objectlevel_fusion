@@ -36,8 +36,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 
     auto sensor = sensors[sensor_name];
 
-    state_t spatially_aligned_state;
-    spatially_align(sensor->get_x(), sensor->get_y(), sensor->get_angle(), received_state, spatially_aligned_state);
+    state_t spatially_aligned_state = spatially_align(sensor->get_x(), sensor->get_y(), sensor->get_angle(), received_state);
 
     log_state((char *) "\n==> State spatially aligned:\n %s", spatially_aligned_state);
 

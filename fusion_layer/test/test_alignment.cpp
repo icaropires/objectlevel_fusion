@@ -9,8 +9,7 @@
 
 
 void spatial_alignment_check(float delta_x, float delta_y, float theta, const state_t& object_state, const state_t& expected) {
-    state_t result;
-    spatially_align(delta_x, delta_y, theta, object_state, result);
+    state_t result = spatially_align(delta_x, delta_y, theta, object_state);
 
     const float precision = 1e-4;
     ASSERT_THAT(
