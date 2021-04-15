@@ -93,6 +93,7 @@ void TemporalAlignerEKF::predict(float delta_t) {
         );
 
     state_array[YAW_IDX] = fmod((yaw + yaw_rate * dt + M_PI), (2.0 * M_PI)) - M_PI;
+    state_array[YAW_IDX] = remainderf(yaw + yaw_rate * dt, 2*M_PI);  // Also keeps angle in [0, 2*pi)
     state_array[VELOCITY_IDX] = velocity + acceleration * dt;
     state_array[YAW_RATE_IDX] = yaw_rate;
     state_array[ACCELERATION_IDX] = acceleration;
