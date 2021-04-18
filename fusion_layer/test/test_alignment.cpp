@@ -9,8 +9,7 @@
 
 
 void spatial_alignment_check(float delta_x, float delta_y, float theta, const state_t& object_state, const state_t& expected) {
-    state_t result;
-    spatially_align(delta_x, delta_y, theta, object_state, result);
+    state_t result = spatially_align(delta_x, delta_y, theta, object_state);
 
     const float precision = 1e-4;
     ASSERT_THAT(
@@ -117,7 +116,12 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
     float *measurement_carray_ptr = measurement_noise_matrix.data();
     std::copy(measurement_carray_ptr, measurement_carray_ptr+(ctra_size_t*ctra_size_t), std::begin(measurement_noise_array));
 
-    temporal_aligner.update(measured_state, measurement_noise_array);
+    capable_vector_t sensor_capable;
+    for(auto& capable : sensor_capable) {
+        capable = true;
+    }
+
+    temporal_aligner.update(measured_state, measurement_noise_array, sensor_capable);
 
     state_t updated_state = temporal_aligner.get_state();
 
@@ -151,7 +155,7 @@ TEST(TestTemporalAlignment, temporalAlignEKF) {
 
     measured_state = TemporalAlignerEKF::format_to_object_model(ctra_measured_state);
 
-    temporal_aligner.update(measured_state, measurement_noise_array);
+    temporal_aligner.update(measured_state, measurement_noise_array, sensor_capable);
 
     updated_state = temporal_aligner.get_state();
 

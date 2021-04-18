@@ -9,8 +9,6 @@
 #include "object_model_msgs/msg/object_model.hpp"
 #include "types.hpp"
 
-// TODO: create Alignment interface with virtual method align
-// TODO: create constant to substitute all the 6s
 class TemporalAlignerEKF : public TemporalAligner {
     bool is_initialized;
 
@@ -28,7 +26,7 @@ class TemporalAlignerEKF : public TemporalAligner {
     state_t align(float delta_t);
 
     state_t get_state() const;
-    void update(const state_t& measurement, const ctra_squared_t& measurement_noise_matrix);
+    void update(const state_t& measurement, const ctra_squared_t& measurement_noise_matrix, const capable_vector_t& capable);
 
     static state_t format_to_object_model(const ctra_array_t& state);
 
@@ -36,4 +34,6 @@ class TemporalAlignerEKF : public TemporalAligner {
 
  private:
     void predict(float delta_t);
+
+    void disable_not_capable_attributes(ctra_matrix_t& JH, const capable_vector_t& capable);
 };

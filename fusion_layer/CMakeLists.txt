@@ -10,7 +10,8 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Required packages
+find_package(rosidl_default_generators REQUIRED)
+
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 
@@ -18,7 +19,6 @@ find_package(object_model_msgs REQUIRED)
 
 find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
-
 
 # ============== Setting as lib ==============
 
@@ -28,7 +28,13 @@ file(GLOB SOURCES "src/*.cpp")
 
 add_library(fusion_lib ${SOURCES})
 
+rosidl_generate_interfaces(${PROJECT_NAME}
+    "srv/RegisterSensor.srv"
+    "srv/RemoveSensor.srv"
+ )
+
 ament_target_dependencies(fusion_lib rclcpp object_model_msgs Eigen3)
+rosidl_target_interfaces(fusion_lib ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 target_include_directories(fusion_lib
   PUBLIC

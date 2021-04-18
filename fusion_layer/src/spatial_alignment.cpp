@@ -1,6 +1,6 @@
 #include "fusion_layer/spatial_alignment.hpp"
 
-void spatially_align(float delta_x, float delta_y, float theta, const state_t& object_state, state_t& result) {
+state_t spatially_align(float delta_x, float delta_y, float theta, const state_t& object_state) {
     theta = fmod(theta, 2.0 * M_PI);
 
     auto sin_theta = static_cast<float>(sin(theta));
@@ -8,6 +8,8 @@ void spatially_align(float delta_x, float delta_y, float theta, const state_t& o
 
     static constexpr int state_size = object_model_msgs::msg::Track::STATE_SIZE;
     static constexpr int transform_size = state_size + 1;
+
+    state_t result;
 
     float transformation[transform_size][transform_size] = {
         {cos_theta, -sin_theta, 0, 0, 0, 0, 0, 0, delta_x},
@@ -35,4 +37,6 @@ void spatially_align(float delta_x, float delta_y, float theta, const state_t& o
             result[k] = sum;
         }
     }
+
+    return result;
 }
