@@ -13,6 +13,8 @@ using state_covariance_matrix_t = Eigen::Matrix<float, object_model_msgs::msg::T
 using measurement_noise_matrix_t = Eigen::Matrix<float, object_model_msgs::msg::Track::STATE_SIZE, object_model_msgs::msg::Track::STATE_SIZE>;
 using process_noise_matrix_t = Eigen::Matrix<float, object_model_msgs::msg::Track::STATE_SIZE, object_model_msgs::msg::Track::STATE_SIZE>;
 
+using capable_vector_t = std::array<bool, object_model_msgs::msg::Track::STATE_SIZE>;
+
 // EKF - Temporal Alignment
 constexpr int ctra_size_t = 6;
 using ctra_vector_t = Eigen::Matrix<float, ctra_size_t, 1>;

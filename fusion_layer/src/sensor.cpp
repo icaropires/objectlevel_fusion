@@ -1,7 +1,7 @@
 #include "fusion_layer/sensor.hpp"
 
 Sensor::Sensor(const std::string& name, float x, float y, float angle,
-            const std::array<bool, object_model_msgs::msg::Track::STATE_SIZE>& capable,
+            const capable_vector_t& capable,
             const ctra_squared_t& measurement_noise_matrix)
     : name(name), x(x), y(y), angle(angle), capable(capable), measurement_noise_matrix(measurement_noise_matrix) {
 }

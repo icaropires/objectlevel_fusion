@@ -62,7 +62,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     // Must be updated when there are more preprocessing/fusion steps implemented
     state_t final_state = temporally_aligned_state;
 
-    temporal_aligner.update(final_state, sensor->measurement_noise_matrix);
+    temporal_aligner.update(final_state, sensor->measurement_noise_matrix, sensor->capable);
 
     time_last_msg = get_timestamp(msg);
     RCLCPP_INFO(get_logger(), "Number of registered sensors: %d", sensors.size());

@@ -159,7 +159,21 @@ void TemporalAlignerEKF::predict(float delta_t) {
     P = JA*P*JA.transpose() + Q;
 }
 
-void TemporalAlignerEKF::update(const state_t& measurement, const ctra_squared_t& measurement_noise_matrix) {
+void TemporalAlignerEKF::disable_not_capable_attributes(ctra_matrix_t& JH, const capable_vector_t& capable) {
+    state_t capable_float;
+    for(int i = 0; i < object_model_msgs::msg::Track::STATE_SIZE; ++i) {
+        capable_float[i] = static_cast<float>(capable[i]);
+    }
+
+    ctra_array_t ctra_cabable = format_from_object_model(capable_float);
+    for(int i = 0; i < ctra_size_t; ++i) {
+        if(ctra_cabable[i] < 0.001) {  // almost 0
+            JH(i, i) = 0.0;
+        }
+    }
+}
+
+void TemporalAlignerEKF::update(const state_t& measurement, const ctra_squared_t& measurement_noise_matrix, const capable_vector_t& capable) {
     if(not is_initialized) {
         throw std::runtime_error("TemporalAlignerEKF must be initialized first!");
     }
@@ -171,7 +185,9 @@ void TemporalAlignerEKF::update(const state_t& measurement, const ctra_squared_t
     ctra_vector_t hx = x;  // Not making any transformation and considering that all the atributes are being measured
 
     ctra_matrix_t JH;
-    JH.setIdentity();  // Identity because is assumed that for each attribute in state there exists a respective measurement attribute
+    JH.setIdentity();
+
+    disable_not_capable_attributes(JH, capable);
 
     ctra_matrix_t S = JH*P*JH.transpose() + R;
     ctra_matrix_t K = (P*JH.transpose()) * S.inverse();
