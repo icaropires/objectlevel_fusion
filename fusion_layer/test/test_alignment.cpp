@@ -52,8 +52,10 @@ TEST(TestTemporalAlignment, convertFromObjectModel) {
 /*
  * Static values used here were generated at utils/draft_EKF_temporal_alignment.ipynb
  * Big test but too much work to split it, not worth it
+ * It's not testing directly the temporal alignment but internally, it uses the same functions that
+ *   are being tested here
  * */
-TEST(TestTemporalAlignment, temporalAlignEKF) {
+TEST(TestTemporalAlignment, ekfCompleteImplementation) {
     constexpr int state_size = object_model_msgs::msg::Track::STATE_SIZE;
 
     // ================================ Check first predict =============================
