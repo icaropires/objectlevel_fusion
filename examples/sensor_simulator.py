@@ -22,7 +22,7 @@ class CameraSensor(Node):
         self.capable = capable
         self.measurement_noise_matrix = measurement_noise_matrix
 
-        self._max_objects = 5
+        self._max_objects = 3
         self.tracking_objects = [ObjectMeasurements(self.get_clock()) for _ in range(self._max_objects)]
 
         self.sensor_registration_client = self.create_client(RegisterSensor, 'fusion_layer/register_sensor')
@@ -66,6 +66,9 @@ class CameraSensor(Node):
             if random.choices((True, False), [2, 1])[0]:  # Not sending information about all measurements everytime
                 msg.header.stamp = time_stamp.to_msg()  # Timestamp from msg will be the one from last measurement
                 msg.object_model.append(obj)
+
+        if not msg.object_model:
+            return
 
         self.publisher_.publish(msg)
 
