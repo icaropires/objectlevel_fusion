@@ -20,11 +20,12 @@ class Fusion : public rclcpp::Node
 private:
     TemporalAlignerEKF temporal_aligner;
 
+    uint32_t object_id_counter;
+
     std::map<std::string, std::shared_ptr<Sensor>> sensors;
+    std::map<uint32_t, object_model_msgs::msg::Object::SharedPtr> global_object_model;
   
     const std::string input_topic;
-  
-    bool is_first_message;
   
     uint64_t time_last_msg;
   
@@ -41,13 +42,17 @@ public:
 private:
     void topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg);
 
+    void temporally_align_global_objects(float delta_t);
+
+    float get_delta_t(const object_model_msgs::msg::ObjectModel::SharedPtr msg);
+
     void register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSensor::Request> request,
         std::shared_ptr<fusion_layer::srv::RegisterSensor::Response> response);
 
     void remove_sensor(const std::shared_ptr<fusion_layer::srv::RemoveSensor::Request> request,
         std::shared_ptr<fusion_layer::srv::RemoveSensor::Response> response);
   
-    void log_state(char *label, const state_t& state);
+    void log_state(const std::string& label, uint32_t obj_id, const state_t& state);
   
     static uint64_t get_timestamp(const object_model_msgs::msg::ObjectModel::SharedPtr msg);
   

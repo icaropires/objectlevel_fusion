@@ -2,8 +2,9 @@
 
 Fusion::Fusion()
   : Node("fusion_layer"),
+    object_id_counter(0),
     input_topic("objectlevel_fusion/fusion_layer/fusion/submit"),
-    is_first_message(true), time_last_msg(0)
+    time_last_msg(0)
 {
     register_sensor_srv_ = create_service<fusion_layer::srv::RegisterSensor>("fusion_layer/register_sensor",
             std::bind(&Fusion::register_sensor, this, std::placeholders::_1, std::placeholders::_2));
@@ -21,52 +22,61 @@ Fusion::~Fusion() {
 }
 
 void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) {
-    using namespace object_model_msgs::msg;
-
     const std::string sensor_name = msg->header.frame_id;
-    state_t received_state = msg->track.state;
-
     RCLCPP_INFO(get_logger(), "Received message from: %s", sensor_name.c_str());
+
     if(sensors.find(sensor_name) == sensors.end()) {
         RCLCPP_WARN(get_logger(), "Sensor '%s' not registered, ignoring message..", sensor_name.c_str());
         return;
     }
 
-    log_state((char *) "\n==> Received state:\n %s", received_state);
-
-    auto sensor = sensors[sensor_name];
-
-    state_t spatially_aligned_state = spatially_align(sensor->get_x(), sensor->get_y(), sensor->get_angle(), received_state);
-
-    log_state((char *) "\n==> State spatially aligned:\n %s", spatially_aligned_state);
-
-    state_t temporally_aligned_state;
-
-    if(not is_first_message) {
-        uint64_t delta_t_int = get_timestamp(msg) - time_last_msg;
-        float delta_t = static_cast<float>(delta_t_int) / 1e9;  // seconds
-
-        temporally_aligned_state = temporal_aligner.align(delta_t);
-
-        log_state((char *) "\n==> State temporally aligned:\n %s", temporally_aligned_state);
-    } else {
-        temporal_aligner = TemporalAlignerEKF(spatially_aligned_state);
-
-        is_first_message = false;
-        time_last_msg = get_timestamp(msg);
-        RCLCPP_INFO(get_logger(), "Temporal Aligner intialized\n\n");
+    if(msg->object_model.size() == 0) {
+        RCLCPP_WARN(get_logger(), "Got an empty object list from sensor '%s', ignoring message..", sensor_name.c_str());
         return;
     }
 
-    // Final state of the object
-    // Must be updated when there are more preprocessing/fusion steps implemented
-    state_t final_state = temporally_aligned_state;
+    // Keep global objects up to date to be fused with arriving objects
+    float delta_t = get_delta_t(msg);
+    temporally_align_global_objects(delta_t);
 
-    temporal_aligner.update(final_state, sensor->measurement_noise_matrix, sensor->capable);
+    for(auto& obj: msg->object_model) {
+        object_id_counter++;
+
+        state_t received_state = obj.track.state;
+        log_state("\n==> Received state", object_id_counter, received_state);
+
+        auto sensor = sensors[sensor_name];
+
+        state_t spatially_aligned_state = spatially_align(sensor->get_x(), sensor->get_y(), sensor->get_angle(), received_state);
+        log_state("\n==> Received state spatially aligned", object_id_counter, spatially_aligned_state);
+
+        obj.track.state = spatially_aligned_state;
+
+        // Add here association and fusion
+
+        global_object_model[object_id_counter] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
+
+        RCLCPP_INFO(get_logger(), "\n");
+    }
 
     time_last_msg = get_timestamp(msg);
     RCLCPP_INFO(get_logger(), "Number of registered sensors: %d", sensors.size());
+    RCLCPP_INFO(get_logger(), "Number of objects being tracked: %d", global_object_model.size());
     RCLCPP_INFO(get_logger(), "\n\n");
+}
+
+void Fusion::temporally_align_global_objects(float delta_t) {
+    for(auto& object_pair : global_object_model)  {
+        auto global_object = object_pair.second;
+        TemporalAlignerEKF::align(delta_t, global_object->track.state, global_object->track.covariation);
+    }
+}
+
+float Fusion::get_delta_t(const object_model_msgs::msg::ObjectModel::SharedPtr msg) {
+    uint64_t delta_t_int = get_timestamp(msg) - time_last_msg;
+    float delta_t = static_cast<float>(delta_t_int) / 1e9;  // seconds
+
+    return delta_t;
 }
 
 void Fusion::register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSensor::Request> request,
@@ -135,12 +145,12 @@ void Fusion::state_to_str(const state_t& state, char *c_str) {
             state[Track::STATE_YAW_RATE_IDX]);
 }
 
-void Fusion::log_state(char *label, const state_t& state) {
+void Fusion::log_state(const std::string& label, uint32_t obj_id, const state_t& state) {
     static constexpr size_t maximum_str_size = 200;
-    char c_str[maximum_str_size];
+    char state_cstr[maximum_str_size];
 
-    state_to_str(state, c_str);
-    RCLCPP_INFO(get_logger(), label, c_str);
+    state_to_str(state, state_cstr);
+    RCLCPP_INFO(get_logger(), label + " from object %u:\n %s", obj_id, state_cstr);
 }
 
 /*

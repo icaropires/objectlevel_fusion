@@ -16,6 +16,7 @@ find_package(std_msgs REQUIRED)
 
 set(msg_files
   "msg/ObjectModel.msg"
+  "msg/Object.msg"
   "msg/Track.msg"
   "msg/Dimension.msg"
   "msg/ExistenceProbability.msg"

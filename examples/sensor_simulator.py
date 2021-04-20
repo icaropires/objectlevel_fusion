@@ -1,8 +1,9 @@
 import numpy as np
 import rclpy
+import random
 from rclpy.node import Node
 
-from object_model_msgs.msg import ObjectModel, Track
+from object_model_msgs.msg import ObjectModel, Object, Track
 from fusion_layer.srv import RegisterSensor, RemoveSensor
 
 
@@ -21,8 +22,8 @@ class CameraSensor(Node):
         self.capable = capable
         self.measurement_noise_matrix = measurement_noise_matrix
 
-        # TODO: Make it a list of objects
-        self.obj1_measurements = ObjectMeasurements(self.get_clock())
+        self._max_objects = 3
+        self.tracking_objects = [ObjectMeasurements(self.get_clock()) for _ in range(self._max_objects)]
 
         self.sensor_registration_client = self.create_client(RegisterSensor, 'fusion_layer/register_sensor')
         while not self.sensor_registration_client.wait_for_service(timeout_sec=5.0):
@@ -58,13 +59,26 @@ class CameraSensor(Node):
         msg = ObjectModel()
         msg.header.frame_id = self.get_name()
 
-        msg.track.state, time_stamp = next(self.obj1_measurements)
-        msg.header.stamp = time_stamp.to_msg()
+        for obj_measurement in self.tracking_objects:
+            obj = Object()
+            obj.track.state, time_stamp = next(obj_measurement)
+
+            if random.choices((True, False), [2, 1])[0]:  # Not sending information about all measurements everytime
+                msg.header.stamp = time_stamp.to_msg()  # Timestamp from msg will be the one from last measurement
+                msg.object_model.append(obj)
+
+        if not msg.object_model:
+            return
 
         self.publisher_.publish(msg)
 
-        state_truncated = list(np.round(msg.track.state, 4))
-        self.get_logger().info('Publishing state: %s' % state_truncated)
+        published_states = ',\n'.join(
+            '\t' + str(list(np.round(obj.track.state, 4)))
+            for obj in msg.object_model
+        )
+
+        state_truncated = published_states
+        self.get_logger().info('Published:\n %s' % state_truncated)
 
 
 class ObjectMeasurements:
@@ -159,4 +173,7 @@ def main(args=None):
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Finished publishing by user command")

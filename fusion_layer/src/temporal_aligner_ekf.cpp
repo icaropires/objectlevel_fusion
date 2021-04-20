@@ -4,9 +4,6 @@ TemporalAlignerEKF::TemporalAlignerEKF()
   : is_initialized(false) {
 }
 
-/*
- * TODO: Should object_model_msgs::msg::Track.state be the P matrix?
- */
 TemporalAlignerEKF::TemporalAlignerEKF(const state_t& initial_state) 
   : is_initialized(true), P(ctra_matrix_t::Zero()), Q(ctra_matrix_t::Zero())  {
 
@@ -24,43 +21,36 @@ state_t TemporalAlignerEKF::align(float delta_t) {
     return get_state();
 }
 
+void TemporalAlignerEKF::align(float delta_t, state_t& state, ctra_squared_t& covariation) {
+    ctra_array_t ctra_state = format_from_object_model(state);
+    ctra_matrix_t covariation_matrix(covariation.data());
+
+    predict(delta_t, ctra_state, covariation_matrix);
+
+    state = format_to_object_model(ctra_state);
+
+    float *covariation_carray_ptr = covariation_matrix.data();
+    std::copy(covariation_carray_ptr, covariation_carray_ptr+(ctra_size_t*ctra_size_t), std::begin(covariation));
+}
+
 state_t TemporalAlignerEKF::get_state() const {
     return format_to_object_model(state_array);
 }
 
-/*
-* From [x, y, yaw, v, yaw_rate, a] to [x, y, vx, vy, ax, ay, yaw, yaw_rate]
-*/
-state_t TemporalAlignerEKF::format_to_object_model(const ctra_array_t& state){
-    return {
-        state[X_IDX],
-        state[Y_IDX],
-        cosf(state[YAW_IDX])*state[VELOCITY_IDX],
-        sinf(state[YAW_IDX])*state[VELOCITY_IDX],
-        cosf(state[YAW_IDX])*state[ACCELERATION_IDX],
-        sinf(state[YAW_IDX])*state[ACCELERATION_IDX],
-        state[YAW_IDX],
-        state[YAW_RATE_IDX]
-    };
-}
-
-/*
-* From [x, y, vx, vy, ax, ay, yaw, yaw_rate] to [x, y, yaw, v, yaw_rate, a]
-*/
-ctra_array_t TemporalAlignerEKF::format_from_object_model(const state_t& state){
-    using namespace object_model_msgs::msg;
-
-    return {
-        state[Track::STATE_X_IDX],
-        state[Track::STATE_Y_IDX],
-        state[Track::STATE_YAW_IDX],
-        hypotf(state[Track::STATE_VELOCITY_X_IDX], state[Track::STATE_VELOCITY_Y_IDX]),
-        state[Track::STATE_YAW_RATE_IDX],
-        hypotf(state[Track::STATE_ACCELERATION_X_IDX], state[Track::STATE_ACCELERATION_Y_IDX])
-    };
-}
-
 void TemporalAlignerEKF::predict(float delta_t) {
+    Q = calculate_process_noise(delta_t);
+    state_array = predict_state(delta_t, state_array);
+    P = predict_covariation(delta_t, state_array, P, Q);
+}
+
+void TemporalAlignerEKF::predict(float delta_t, ctra_array_t& state, ctra_matrix_t& covariation) {
+    ctra_matrix_t process_noise = calculate_process_noise(delta_t);
+    state = predict_state(delta_t, state);
+
+    covariation = predict_covariation(delta_t, state, covariation, process_noise);
+}
+
+ctra_matrix_t TemporalAlignerEKF::calculate_process_noise(float delta_t) {
     const float dt = delta_t;
     const float noise_pos = 0.5*8.8*dt*dt;  // assumes 8.8m/s2 as maximum acceleration, forcing the vehicle
     const float noise_course = 0.1*dt;  // assumes 0.1rad/s as maximum turn rate for the vehicle
@@ -69,37 +59,56 @@ void TemporalAlignerEKF::predict(float delta_t) {
     const float noise_accel = 0.5;  // assumes 0.5m/s2
 
     // TODO: Can be improved and calibratred
-    Q.diagonal() << noise_pos*noise_pos, noise_pos*noise_pos, noise_course*noise_course, noise_velocity*noise_velocity, noise_yawrate*noise_yawrate, noise_accel*noise_accel;
+    ctra_matrix_t process_noise = ctra_matrix_t::Zero();  // It's already initialized with zeros in constructuctor, but this makes the implementation more reliable
+    process_noise.diagonal() << noise_pos*noise_pos, noise_pos*noise_pos, noise_course*noise_course, noise_velocity*noise_velocity, noise_yawrate*noise_yawrate, noise_accel*noise_accel;
 
-    float pos_x = state_array[X_IDX], pos_y = state_array[Y_IDX], yaw = state_array[YAW_IDX];
-    float velocity = state_array[VELOCITY_IDX], yaw_rate = state_array[YAW_RATE_IDX], acceleration = state_array[ACCELERATION_IDX];
+    return process_noise;
+}
+
+ctra_array_t TemporalAlignerEKF::predict_state(float delta_t, const ctra_array_t& state) {
+    float dt = delta_t;
+    float pos_x = state[X_IDX], pos_y = state[Y_IDX], yaw = state[YAW_IDX];
+    float velocity = state[VELOCITY_IDX], yaw_rate = state[YAW_RATE_IDX], acceleration = state[ACCELERATION_IDX];
+
+    ctra_array_t predicted_state;
 
     if(abs(yaw_rate) <  0.00001) {
         yaw_rate = 0.00001;
     }
 
-    state_array[X_IDX] = pos_x + (1 / pow(yaw_rate, 2)) *
+    predicted_state[X_IDX] = pos_x + (1 / pow(yaw_rate, 2)) *
         (
             (velocity*yaw_rate + acceleration * yaw_rate * dt) * sinf(yaw + yaw_rate* dt)
             + acceleration * cosf(yaw + yaw_rate * dt)
             - velocity * yaw_rate * sinf(yaw) - acceleration * cosf(yaw)
         );
 
-    state_array[Y_IDX] = pos_y + (1 / pow(yaw_rate, 2)) *
+    predicted_state[Y_IDX] = pos_y + (1 / pow(yaw_rate, 2)) *
         (
             (-velocity*yaw_rate - acceleration * yaw_rate * dt) * cosf(yaw + yaw_rate* dt)
             + acceleration * sinf(yaw + yaw_rate * dt)
             + velocity * yaw_rate * cosf(yaw) - acceleration * sinf(yaw)
         );
 
-    state_array[YAW_IDX] = fmod((yaw + yaw_rate * dt + M_PI), (2.0 * M_PI)) - M_PI;
-    state_array[YAW_IDX] = remainderf(yaw + yaw_rate * dt, 2*M_PI);  // Also keeps angle in [0, 2*pi)
-    state_array[VELOCITY_IDX] = velocity + acceleration * dt;
-    state_array[YAW_RATE_IDX] = yaw_rate;
-    state_array[ACCELERATION_IDX] = acceleration;
+    predicted_state[YAW_IDX] = fmod((yaw + yaw_rate * dt + M_PI), (2.0 * M_PI)) - M_PI;
+    predicted_state[YAW_IDX] = remainderf(yaw + yaw_rate * dt, 2*M_PI);  // Also keeps angle in [0, 2*pi)
+    predicted_state[VELOCITY_IDX] = velocity + acceleration * dt;
+    predicted_state[YAW_RATE_IDX] = yaw_rate;
+    predicted_state[ACCELERATION_IDX] = acceleration;
 
-    pos_x = state_array[X_IDX], pos_y = state_array[Y_IDX], yaw = state_array[YAW_IDX];
-    velocity = state_array[VELOCITY_IDX], yaw_rate = state_array[YAW_RATE_IDX], acceleration = state_array[ACCELERATION_IDX];
+    return predicted_state;
+}
+
+ctra_matrix_t TemporalAlignerEKF::predict_covariation(float delta_t, const ctra_array_t& state, const ctra_matrix_t& covariation, const ctra_matrix_t& process_noise) {
+    ctra_matrix_t JA = gen_ja_matrix(delta_t, state);
+
+    // Project the error covariance ahead
+    return JA*covariation*JA.transpose() + process_noise;
+}
+
+ctra_matrix_t TemporalAlignerEKF::gen_ja_matrix(float delta_t, const ctra_array_t& state) {
+    float dt = delta_t;
+    float yaw = state[YAW_IDX], velocity = state[VELOCITY_IDX], yaw_rate = state[YAW_RATE_IDX], acceleration = state[ACCELERATION_IDX];
 
     // Calculate the Jacobian
     float a13 = (
@@ -155,8 +164,7 @@ void TemporalAlignerEKF::predict(float delta_t) {
           0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
           0.0, 0.0, 0.0, 0.0, 0.0, 1.0;
 
-    // Project the error covariance ahead
-    P = JA*P*JA.transpose() + Q;
+    return JA;
 }
 
 void TemporalAlignerEKF::disable_not_capable_attributes(ctra_matrix_t& JH, const capable_vector_t& capable) {
@@ -199,4 +207,36 @@ void TemporalAlignerEKF::update(const state_t& measurement, const ctra_squared_t
 
     x = x + K*y;
     P = (ctra_matrix_t::Identity() - K*JH)*P;
+}
+
+/*
+* From [x, y, yaw, v, yaw_rate, a] to [x, y, vx, vy, ax, ay, yaw, yaw_rate]
+*/
+state_t TemporalAlignerEKF::format_to_object_model(const ctra_array_t& state){
+    return {
+        state[X_IDX],
+        state[Y_IDX],
+        cosf(state[YAW_IDX])*state[VELOCITY_IDX],
+        sinf(state[YAW_IDX])*state[VELOCITY_IDX],
+        cosf(state[YAW_IDX])*state[ACCELERATION_IDX],
+        sinf(state[YAW_IDX])*state[ACCELERATION_IDX],
+        state[YAW_IDX],
+        state[YAW_RATE_IDX]
+    };
+}
+
+/*
+* From [x, y, vx, vy, ax, ay, yaw, yaw_rate] to [x, y, yaw, v, yaw_rate, a]
+*/
+ctra_array_t TemporalAlignerEKF::format_from_object_model(const state_t& state){
+    using namespace object_model_msgs::msg;
+
+    return {
+        state[Track::STATE_X_IDX],
+        state[Track::STATE_Y_IDX],
+        state[Track::STATE_YAW_IDX],
+        hypotf(state[Track::STATE_VELOCITY_X_IDX], state[Track::STATE_VELOCITY_Y_IDX]),
+        state[Track::STATE_YAW_RATE_IDX],
+        hypotf(state[Track::STATE_ACCELERATION_X_IDX], state[Track::STATE_ACCELERATION_Y_IDX])
+    };
 }
