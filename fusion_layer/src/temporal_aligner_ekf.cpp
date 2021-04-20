@@ -96,7 +96,7 @@ ctra_array_t TemporalAlignerEKF::predict_state(float delta_t, const ctra_array_t
     predicted_state[YAW_RATE_IDX] = yaw_rate;
     predicted_state[ACCELERATION_IDX] = acceleration;
 
-    return predict_state;
+    return predicted_state;
 }
 
 ctra_matrix_t TemporalAlignerEKF::predict_covariation(float delta_t, const ctra_array_t& state, const ctra_matrix_t& covariation, const ctra_matrix_t& process_noise) {

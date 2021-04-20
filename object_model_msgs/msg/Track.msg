@@ -14,4 +14,8 @@ uint8 STATE_SIZE = 8
 float32[8] state # [x, y, velocity x, velocity y, acceleration x, acceleration y, yaw, yaw rate]
 
 # Square matrix, size is the size of state squared
-float32[64] covariation # Only 1d array supported. Access with `covariation[i*8 + j]`
+# float32[64] covariation # Only 1d array supported. Access with `covariation[i*8 + j]`
+
+# Using covariation as size of CTRA squared for now, until remodel CTRA or figure out
+#   how to transform from 6x6 to 8x8 and back
+float32[36] covariation
