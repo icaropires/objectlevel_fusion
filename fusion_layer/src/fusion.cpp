@@ -52,7 +52,10 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 
         obj.track.state = spatially_aligned_state;
 
-        // Add here association and fusion
+        uint32_t global_idx = simple_associate(obj, global_object_model);
+        (void) global_idx; // TODO
+
+        // Add here fusion
 
         global_object_model[object_id_counter] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
 

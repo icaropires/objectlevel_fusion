@@ -13,6 +13,7 @@
 #include "fusion_layer/sensor.hpp"
 #include "fusion_layer/spatial_alignment.hpp"
 #include "fusion_layer/temporal_aligner_ekf.hpp"
+#include "fusion_layer/simple_association.hpp"
 #include "types.hpp"
 
 class Fusion : public rclcpp::Node
