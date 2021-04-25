@@ -7,8 +7,10 @@ if(NOT CMAKE_CXX_STANDARD)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 endif()
+
+set(CMAKE_BUILD_TYPE Release)
 
 find_package(rosidl_default_generators REQUIRED)
 
@@ -19,6 +21,21 @@ find_package(object_model_msgs REQUIRED)
 
 find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
+
+find_package(CGAL QUIET COMPONENTS)
+
+if ( NOT CGAL_FOUND )
+  message(STATUS "This project requires the CGAL library, and will not be compiled.")
+  return()  
+endif()
+
+# Boost and its components
+find_package( Boost REQUIRED )
+
+if ( NOT Boost_FOUND )
+  message(STATUS "This project requires the Boost library, and will not be compiled.")
+  return()  
+endif()
 
 # ============== Setting as lib ==============
 
@@ -33,7 +50,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     "srv/RemoveSensor.srv"
  )
 
-ament_target_dependencies(fusion_lib rclcpp object_model_msgs Eigen3)
+ament_target_dependencies(fusion_lib rclcpp object_model_msgs Eigen3 CGAL)
 rosidl_target_interfaces(fusion_lib ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 target_include_directories(fusion_lib
