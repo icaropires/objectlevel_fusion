@@ -56,8 +56,6 @@ TEST(TestTemporalAlignment, convertFromObjectModel) {
  *   are being tested here
  * */
 TEST(TestTemporalAlignment, ekfCompleteImplementation) {
-    constexpr int state_size = object_model_msgs::msg::Track::STATE_SIZE;
-
     // ================================ Check first predict =============================
 
     // Fill track state
@@ -66,7 +64,7 @@ TEST(TestTemporalAlignment, ekfCompleteImplementation) {
     ctra_array_t ctra_noise = {-1.044, 1.0289, -0.0145, 0.9013, -0.0183, 0.0579};
 
     // Add noise to initial state
-    for (int i = 0; i < state_size; ++i) {
+    for (int i = 0; i < ctra_size_t; ++i) {
         ctra_state[i] += ctra_noise[i];
     }
 
@@ -106,8 +104,8 @@ TEST(TestTemporalAlignment, ekfCompleteImplementation) {
      * to transform it from 8x8 to 6x6, I'll be using 6x6 until I figure it out or remodel CTRA.
      */
 
-    constexpr float x_variance = 1.5*1.5, y_variance = 1.5*1.5, v_variance = 1*1;
-    constexpr float a_variance = 0.5*0.5, yaw_variance = 0.02*0.02, yaw_rate_variance = 0.1*0.1;
+    const float x_variance = 1.5*1.5, y_variance = 1.5*1.5, v_variance = 1*1;
+    const float a_variance = 0.5*0.5, yaw_variance = 0.02*0.02, yaw_rate_variance = 0.1*0.1;
 
     ctra_squared_t measurement_noise_array;
 

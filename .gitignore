@@ -1,7 +1,7 @@
 # ROS
-*/install
-*/log
-*/build
+install/
+log/
+build/
 
 # VIM
 *.swp

@@ -18,7 +18,7 @@ set(msg_files
   "msg/ObjectModel.msg"
   "msg/Object.msg"
   "msg/Track.msg"
-  "msg/Dimension.msg"
+  "msg/Dimensions.msg"
   "msg/ExistenceProbability.msg"
   "msg/Classification.msg"
   "msg/ShapeFeatures.msg"

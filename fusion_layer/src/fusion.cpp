@@ -3,6 +3,7 @@
 Fusion::Fusion()
   : Node("fusion_layer"),
     object_id_counter(0),
+    fusions_counter(0),
     input_topic("objectlevel_fusion/fusion_layer/fusion/submit"),
     time_last_msg(0)
 {
@@ -22,6 +23,8 @@ Fusion::~Fusion() {
 }
 
 void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) {
+    using object_model_msgs::msg::Dimensions;
+
     const std::string sensor_name = msg->header.frame_id;
     RCLCPP_INFO(get_logger(), "Received message from: %s", sensor_name.c_str());
 
@@ -33,6 +36,14 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     if(msg->object_model.size() == 0) {
         RCLCPP_WARN(get_logger(), "Got an empty object list from sensor '%s', ignoring message..", sensor_name.c_str());
         return;
+    }
+
+    for(const auto& obj: msg->object_model) {
+        const auto dimensions_values = obj.dimensions.values;
+        if(dimensions_values[Dimensions::DIMENSIONS_LENGHT_IDX] <= 0 || dimensions_values[Dimensions::DIMENSIONS_WIDTH_IDX] <= 0) {
+            RCLCPP_WARN(get_logger(), "Received zero or negative object dimensions from sensor '%s', ignoring message..", sensor_name.c_str());
+            return;
+        }
     }
 
     // Keep global objects up to date to be fused with arriving objects
@@ -52,9 +63,17 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 
         obj.track.state = spatially_aligned_state;
 
-        // Add here association and fusion
+        uint32_t global_idx = SimpleAssociation::associate(obj, global_object_model);
 
-        global_object_model[object_id_counter] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
+        if(global_idx == global_object_model.size()) {  // It's a new object
+            global_object_model[object_id_counter] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
+        }
+        else {  // Will be fused with existent global object
+            // Fusion will substitute this assignment
+            fusions_counter++;
+            global_object_model[global_idx] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
+            RCLCPP_INFO(get_logger(), "Fusion: object %u <- %u", global_idx, object_id_counter);
+        }
 
         RCLCPP_INFO(get_logger(), "\n");
     }
@@ -62,6 +81,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     time_last_msg = get_timestamp(msg);
     RCLCPP_INFO(get_logger(), "Number of registered sensors: %d", sensors.size());
     RCLCPP_INFO(get_logger(), "Number of objects being tracked: %d", global_object_model.size());
+    RCLCPP_INFO(get_logger(), "Number of fusions performed: %d", fusions_counter);
     RCLCPP_INFO(get_logger(), "\n\n");
 }
 
