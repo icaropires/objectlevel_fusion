@@ -3,6 +3,7 @@
 Fusion::Fusion()
   : Node("fusion_layer"),
     object_id_counter(0),
+    fusions_counter(0),
     input_topic("objectlevel_fusion/fusion_layer/fusion/submit"),
     time_last_msg(0)
 {
@@ -62,12 +63,17 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 
         obj.track.state = spatially_aligned_state;
 
-        uint32_t global_idx = simple_associate(obj, global_object_model);
-        (void) global_idx; // TODO
+        uint32_t global_idx = SimpleAssociation::associate(obj, global_object_model);
 
-        // Add here fusion
-
-        global_object_model[object_id_counter] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
+        if(global_idx == global_object_model.size()) {  // It's a new object
+            global_object_model[object_id_counter] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
+        }
+        else {  // Will be fused with existent global object
+            // Fusion will substitute this assignment
+            fusions_counter++;
+            global_object_model[global_idx] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
+            RCLCPP_INFO(get_logger(), "Fusion: object %u <- %u", global_idx, object_id_counter);
+        }
 
         RCLCPP_INFO(get_logger(), "\n");
     }
@@ -75,6 +81,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     time_last_msg = get_timestamp(msg);
     RCLCPP_INFO(get_logger(), "Number of registered sensors: %d", sensors.size());
     RCLCPP_INFO(get_logger(), "Number of objects being tracked: %d", global_object_model.size());
+    RCLCPP_INFO(get_logger(), "Number of fusions performed: %d", fusions_counter);
     RCLCPP_INFO(get_logger(), "\n\n");
 }
 

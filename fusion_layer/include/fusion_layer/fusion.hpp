@@ -22,6 +22,7 @@ private:
     TemporalAlignerEKF temporal_aligner;
 
     uint32_t object_id_counter;
+    uint32_t fusions_counter;
 
     std::map<std::string, std::shared_ptr<Sensor>> sensors;
     std::map<uint32_t, object_model_msgs::msg::Object::SharedPtr> global_object_model;
