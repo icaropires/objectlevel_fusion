@@ -3,7 +3,7 @@ import rclpy
 import random
 from rclpy.node import Node
 
-from object_model_msgs.msg import ObjectModel, Object, Track
+from object_model_msgs.msg import ObjectModel, Object, Track, Dimensions
 from fusion_layer.srv import RegisterSensor, RemoveSensor
 
 
@@ -61,7 +61,7 @@ class CameraSensor(Node):
 
         for obj_measurement in self.tracking_objects:
             obj = Object()
-            obj.track.state, time_stamp = next(obj_measurement)
+            obj.track.state, obj.dimensions.values, time_stamp = next(obj_measurement)
 
             if random.choices((True, False), [2, 1])[0]:  # Not sending information about all measurements everytime
                 msg.header.stamp = time_stamp.to_msg()  # Timestamp from msg will be the one from last measurement
@@ -96,6 +96,10 @@ class ObjectMeasurements:
         self.acc_function = self._acc_increasing
         self.random_generator = np.random.default_rng()
 
+        # Multiply by the desired interval length and sum the start of the interval
+        self.width = self.random_generator.random() * (3 - 0.5) + 0.5
+        self.length = self.random_generator.random() * (12 - 1.5) + 1.5
+
     def __next__(self):
         """ Generates a simulated measurement from this object
         Increases/decreases yaw_rate and acceleration randomly and the other state attributes
@@ -106,7 +110,6 @@ class ObjectMeasurements:
         delta_t = self._get_delta_t(now)
         self.time_last_msg = now
 
-        # Multiply by the desired interval length and sum the start of the interval
         self.yaw_rate += self.random_generator.random() * 0.03 - 0.015
 
         # Let's make acceleration more dynamic!
@@ -133,16 +136,20 @@ class ObjectMeasurements:
         state[Track.STATE_YAW_IDX] = self.yaw
         state[Track.STATE_YAW_RATE_IDX] = self.yaw_rate
 
-        state = self._add_noise(state)
+        state = self._add_state_noise(state)
 
-        return state, now
+        dimensions = np.zeros(2, dtype='float32')
+        dimensions[Dimensions.DIMENSIONS_WIDTH_IDX] = self.width
+        dimensions[Dimensions.DIMENSIONS_LENGHT_IDX] = self.length
+
+        return state, dimensions, now
 
     def _get_delta_t(self, time):
         delta_t_seconds = time.nanoseconds - self.time_last_msg.nanoseconds
 
         return delta_t_seconds / 10**9
 
-    def _add_noise(self, state):
+    def _add_state_noise(self, state):
         # Check experiments/temporal_alignment_EKF.ipynb
         sensors_std = [1.5, 1.5, 0.9998, 0.02, 0.4999, 0.01, 0.02, 0.1]
 
@@ -150,7 +157,7 @@ class ObjectMeasurements:
         noises = (self.random_generator.random() for _ in sensors_std)
         noises = np.array([n * 2*std - std for std, n in zip(sensors_std, noises)])
 
-        state += noises
+        state += noises  # Warning: side-effect
 
         return state
 
