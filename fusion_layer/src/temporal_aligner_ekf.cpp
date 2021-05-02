@@ -78,20 +78,23 @@ ctra_array_t TemporalAlignerEKF::predict_state(float delta_t, const ctra_array_t
 
     predicted_state[X_IDX] = pos_x + (1 / pow(yaw_rate, 2)) *
         (
-            (velocity*yaw_rate + acceleration * yaw_rate * dt) * sinf(yaw + yaw_rate* dt)
+            (velocity*yaw_rate + acceleration * yaw_rate * dt) * sinf(yaw + yaw_rate * dt)
             + acceleration * cosf(yaw + yaw_rate * dt)
             - velocity * yaw_rate * sinf(yaw) - acceleration * cosf(yaw)
         );
 
     predicted_state[Y_IDX] = pos_y + (1 / pow(yaw_rate, 2)) *
         (
-            (-velocity*yaw_rate - acceleration * yaw_rate * dt) * cosf(yaw + yaw_rate* dt)
+            (-velocity*yaw_rate - acceleration * yaw_rate * dt) * cosf(yaw + yaw_rate * dt)
             + acceleration * sinf(yaw + yaw_rate * dt)
             + velocity * yaw_rate * cosf(yaw) - acceleration * sinf(yaw)
         );
 
-    predicted_state[YAW_IDX] = fmod((yaw + yaw_rate * dt + M_PI), (2.0 * M_PI)) - M_PI;
-    predicted_state[YAW_IDX] = remainderf(yaw + yaw_rate * dt, 2*M_PI);  // Also keeps angle in [0, 2*pi)
+    // Wraps angle in [-pi, pi). Check experiment directory for more information
+    yaw = yaw + yaw_rate * dt;
+    constexpr float two_pi = M_PI*2;
+    predicted_state[YAW_IDX] = fmod(fmod(yaw + M_PI, two_pi) + two_pi, two_pi) - M_PI;
+
     predicted_state[VELOCITY_IDX] = velocity + acceleration * dt;
     predicted_state[YAW_RATE_IDX] = yaw_rate;
     predicted_state[ACCELERATION_IDX] = acceleration;
