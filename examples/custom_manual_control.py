@@ -39,9 +39,6 @@ Use ARROWS or WASD keys for control.
     ESC          : quit
 """
 
-from __future__ import print_function
-
-
 # ==============================================================================
 # -- find carla module ---------------------------------------------------------
 # ==============================================================================
@@ -69,9 +66,11 @@ from threading import Thread
 import rclpy
 from rclpy.node import Node
 
+from object_model_msgs.msg import ObjectModel, Object, Track, Dimensions
+from fusion_layer.srv import RegisterSensor, RemoveSensor
+
 import carla
 from carla import ColorConverter as cc
-from object_model_msgs.msg import ObjectModel, Object, Track, Dimensions
 
 import argparse
 import collections
@@ -609,7 +608,7 @@ class HUD:
         self._info_text += ['', 'Surrounding vehicles:']
 
         nearby_vehicles = world.fake_sensor.read(vehicles)
-        world.fake_sensor.publish()  # Maybe better in world.tick, but it's ok
+        world.fake_sensor.publish_if_data()  # Maybe better in world.tick, but it's ok
 
         for distance, vehicle in nearby_vehicles:
             vehicle_type = get_actor_display_name(vehicle, truncate=22)
@@ -729,18 +728,85 @@ class HelpText:
 # ==============================================================================
 
 class FakeSensor:
-    def __init__(self, world):
+    def __init__(self, world, x=0, y=0, angle=0, name="fake_sensor"):
+        self.name = name
         self.world = world
         self.node = world.ros_node
 
         self.time_last_measurement = None
         self.last_measurement = None
 
-        # TODO: registrar todas as informações desse sensor: capable, posição, etc.
+        self._x = x
+        self._y = y
+        self._angle = angle
+
+        self.capable = [True] * Track.STATE_SIZE
+        # self.measurement_noise_matrix = np.diag(
+        #     [1.5**2, 1.5**2, 1**2, 0.5**2, 0.02**2, 0.1**2
+        # ]).astype('float32')
+        self.measurement_noise_matrix = np.diag(
+            [0, 0, 0, 0, 0, 0]
+        ).astype('float32')
+
+        self.publisher = self.node.create_publisher(
+            ObjectModel,
+            'objectlevel_fusion/fusion_layer/fusion/submit',
+            10
+        )
+
+        self.sensor_registration_client = self.node.create_client(
+            RegisterSensor, 'fusion_layer/register_sensor'
+        )
+        while not self.sensor_registration_client.wait_for_service(timeout_sec=5.0):
+            self.node.get_logger().error(
+                'Failed to connect for sensor registration, trying again...'
+            )
+
+        self.sensor_remover_client = self.node.create_client(
+            RemoveSensor, 'fusion_layer/remove_sensor'
+        )
+        while not self.sensor_remover_client.wait_for_service(timeout_sec=5.0):
+            self.node.get_logger().error(
+                'Failed to connect for sensor removing, trying again...'
+            )
+
+        self._register()
+
         # TODO: mandar informações do ego vehicle
         # TODO: fazer posição dos objetos detectados ser com relação a esse sensor e não absoluto
-        # TODO: lembrar que o sensor não está no meio do veículo
         # TODO: fazer o visualizador no pygame
+
+    @property
+    def x(self):
+        return self.world.player.get_location().x + self._x
+
+    @property
+    def y(self):
+        return self.world.player.get_location().y + self._y
+
+    @property
+    def angle(self):
+        return self.world.player.get_transform().rotation.yaw + self._angle
+
+    def _register(self):
+        request = RegisterSensor.Request()
+
+        request.name = self.name
+        request.x = self.x
+        request.y = self.y
+        request.angle = self.angle
+        request.capable = self.capable
+        request.measurement_noise_matrix = self.measurement_noise_matrix.reshape(-1)
+
+        self.sensor_registration_client.call_async(request)
+        self.node.get_logger().info(f"Sensor {self.name} registered successfully!")
+
+    def unregister(self):
+        request = RemoveSensor.Request()
+        request.name = self.name
+
+        return self.sensor_remover_client.call_async(request)
+
 
     def read(self, vehicles=None, distance=10):
         if self.world is None:
@@ -764,18 +830,21 @@ class FakeSensor:
         return distances
 
 
-    def publish(self):
+    def publish_if_data(self):
         if self.last_measurement is None:
             raise RuntimeError("Trying to publish before first read")
 
+        if not self.last_measurement:
+            return
+
         msg = self._measurement_to_object_model()
-        self.world.ros_node.fake_sensor_publisher.publish(msg)
+        self.publisher.publish(msg)
 
     def _measurement_to_object_model(self):
         measurement = self.last_measurement
 
         msg = ObjectModel()
-        msg.header.frame_id = 'fake_sensor'
+        msg.header.frame_id = self.name
         msg.header.stamp = self.time_last_measurement.to_msg()
 
         msg.object_model = list(map(actor_to_object_model, measurement))
@@ -924,21 +993,6 @@ class IMUSensor(object):
         self.compass = math.degrees(sensor_data.compass)
 
 # ==============================================================================
-# -- ROS2 Node ---------------------------------------------------------------
-# ==============================================================================
-
-class ROSNode(Node):
-
-    def __init__(self):
-        super().__init__("manual_control_node")
-
-        self.fake_sensor_publisher = self.create_publisher(
-            ObjectModel,
-            '/carla/ego_vehicle/fake_sensor',
-            10
-        )
-
-# ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
 # ==============================================================================
 
@@ -950,7 +1004,7 @@ def game_loop(args):
     pygame.font.init()
     world = None
 
-    ros_node = ROSNode()
+    ros_node = Node('manual_control_node')
     ros_executor = rclpy.executors.MultiThreadedExecutor()
     ros_executor.add_node(ros_node)
 
@@ -986,12 +1040,17 @@ def game_loop(args):
         if (world and world.recording_enabled):
             client.stop_recorder()
 
-        ros_node.destroy_node()
-        rclpy.shutdown()
-
         if world is not None:
+            world.fake_sensor.unregister()
+
+            ros_node.destroy_node()
+            rclpy.shutdown()
+
             world.destroy()
             world = None
+        else:
+            ros_node.destroy_node()
+            rclpy.shutdown()
 
         pygame.quit()
 
