@@ -8,8 +8,8 @@
 #include "object_model_msgs/msg/object_model.hpp"
 
 
-void spatial_alignment_check(float delta_x, float delta_y, float theta, const state_t& object_state, const state_t& expected) {
-    state_t result = spatially_align(delta_x, delta_y, theta, object_state);
+void spatial_alignment_check(float delta_x, float delta_y, float angle, const state_t& object_state, const state_t& expected) {
+    state_t result = spatially_align(delta_x, delta_y, angle, object_state);
 
     const float precision = 1e-4;
     ASSERT_THAT(
@@ -19,7 +19,8 @@ void spatial_alignment_check(float delta_x, float delta_y, float theta, const st
 }
 
 TEST(TestSpatialAlignment, spatiallyAlign) {
-    // delta x, delta y, theta, object_state, expected
+    // delta x, delta y, angle, object_state, expected
+    spatial_alignment_check(0, 0, 0, {1, 1, 2, 2, 3, 3, 4, 4}, {1, 1, 2, 2, 3, 3, 4, 4});
     spatial_alignment_check(1.0, -0.5, 0, {1, 1, 2, 2, 3, 3, 4, 4}, {2, 0.5, 2, 2, 3, 3, 4, 4});
     spatial_alignment_check(-10, 2, 0, {1, 1, 2, 2, 3, 3, 4, 4}, {-9, 3, 2, 2, 3, 3, 4, 4});
     spatial_alignment_check(-10, 2, M_PI/2, {1, 1, 2, 2, 3, 3, 4, 4}, {-11, 3, -2, 2, -3, 3, 5.5708, 4});

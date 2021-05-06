@@ -29,7 +29,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     RCLCPP_INFO(get_logger(), "Received message from: %s", sensor_name.c_str());
 
     if(sensors.find(sensor_name) == sensors.end()) {
-        RCLCPP_WARN(get_logger(), "Sensor '%s' not registered, ignoring message..", sensor_name.c_str());
+        RCLCPP_WARN(get_logger(), "Sensor '%s' is not registered, ignoring message..", sensor_name.c_str());
         return;
     }
 
@@ -134,7 +134,7 @@ void Fusion::remove_sensor(const std::shared_ptr<fusion_layer::srv::RemoveSensor
 
     try {
         if (sensors.find(request->name) == sensors.end()) {
-           throw std::runtime_error("Failed to remove sensor! Sensor '" + request->name + "' not registered."); 
+           throw std::runtime_error("Failed to remove sensor! Sensor '" + request->name + "' is not registered.");
         }
 
         sensors.erase(request->name);
