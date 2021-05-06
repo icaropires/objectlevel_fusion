@@ -61,6 +61,7 @@ except IndexError:
 # -- imports -------------------------------------------------------------------
 # ==============================================================================
 
+from functools import partial
 from threading import Thread
 
 import rclpy
@@ -80,6 +81,7 @@ import math
 import random
 import re
 import weakref
+from copy import deepcopy
 
 try:
     import pygame
@@ -145,8 +147,47 @@ def get_actor_display_name(actor, truncate=250):
     name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
     return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
 
+def get_relative(ego_obj: Object, obj: Object) -> Object:
+    angle = ego_obj.track.state[Track.STATE_YAW_IDX]
+    cos_angle = np.cos(angle)
+    sin_angle = np.sin(angle)
 
-def actor_to_object_model(actor):
+    transformation = np.array([
+        [cos_angle, -sin_angle, 0, 0, 0, 0, 0, 0,   0],
+        [sin_angle,  cos_angle, 0, 0, 0, 0, 0, 0,   0],
+        [0, 0, cos_angle, -sin_angle, 0, 0, 0, 0,   0],
+        [0, 0, sin_angle,  cos_angle, 0, 0, 0, 0,   0],
+        [0, 0, 0, 0, cos_angle, -sin_angle, 0, 0,   0],
+        [0, 0, 0, 0, sin_angle,  cos_angle, 0, 0,   0],
+        [0, 0, 0, 0,          0,           0, 1, 0, 0],
+        [0, 0, 0, 0,          0,           0, 0, 1, 0],
+        [0, 0, 0, 0,          0,           0, 0, 0, 1],
+    ], dtype='float32')
+
+    def align(obj_to_align):
+        to_align = np.hstack((obj_to_align.track.state, 1)).T
+        product = transformation @ to_align
+        return np.delete(product, -1, 0).astype('float32')
+
+    def wrap_angle(theta):
+        return (theta + np.pi) % (2*np.pi) - np.pi
+
+    ego_state_aligned = align(ego_obj)
+    obj_state_aligned = align(obj)
+
+    result = deepcopy(obj)
+    result.track.state = obj_state_aligned - ego_state_aligned
+    result.track.state[Track.STATE_YAW_IDX] = wrap_angle(result.track.state[Track.STATE_YAW_IDX])
+
+    # Mirroring Y axis
+    result.track.state[Track.STATE_Y_IDX] = -result.track.state[Track.STATE_Y_IDX]
+    result.track.state[Track.STATE_VELOCITY_Y_IDX] = -result.track.state[Track.STATE_VELOCITY_Y_IDX]
+    result.track.state[Track.STATE_ACCELERATION_Y_IDX] = -result.track.state[Track.STATE_ACCELERATION_Y_IDX]
+
+    return result
+
+
+def actor_to_object_model(actor, ego_obj=None):
     pos = actor.get_location()
     rot = actor.get_transform().rotation
     vel = actor.get_velocity()
@@ -167,6 +208,9 @@ def actor_to_object_model(actor):
 
     obj.dimensions.values[Dimensions.DIMENSIONS_WIDTH_IDX] = bb.extent.y*2
     obj.dimensions.values[Dimensions.DIMENSIONS_LENGHT_IDX] = bb.extent.x*2
+
+    if ego_obj is not None:
+        obj = get_relative(ego_obj, obj)
 
     return obj
 
@@ -256,6 +300,7 @@ class World:
                 sys.exit(1)
             spawn_points = self.map.get_spawn_points()
             spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+            # spawn_point = carla.Transform(location=carla.Location(-149, 1, 2), rotation=carla.Rotation(yaw=90)) # TODO: remove
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
         # Set up the sensors.
@@ -580,7 +625,6 @@ class HUD:
             '',
             'Vehicle: % 20s' % get_actor_display_name(world.player, truncate=20),
             '',
-            'Speed:   % 15.0f km/h' % (3.6 * math.sqrt(v.x**2 + v.y**2)),
             'Speed:   % 15.0f km/h' % (3.6 * math.hypot(v.x, v.y)),
             'Location:% 20s' % ('(% 5.1f, % 5.1f)' % (t.location.x, t.location.y)),
             u'Compass:% 17.5f\N{DEGREE SIGN} % 2s' % (compass, heading),
@@ -728,7 +772,7 @@ class HelpText:
 # ==============================================================================
 
 class FakeSensor:
-    def __init__(self, world, x=0, y=0, angle=0, name="fake_sensor"):
+    def __init__(self, world, x=0., y=0., angle=0., name="fake_sensor"):
         self.name = name
         self.world = world
         self.node = world.ros_node
@@ -736,9 +780,9 @@ class FakeSensor:
         self.time_last_measurement = None
         self.last_measurement = None
 
-        self._x = x
-        self._y = y
-        self._angle = angle
+        self.relative_x = x
+        self.relative_y = y
+        self.relative_angle = angle
 
         self.capable = [True] * Track.STATE_SIZE
         # self.measurement_noise_matrix = np.diag(
@@ -772,29 +816,29 @@ class FakeSensor:
 
         self._register()
 
-        # TODO: mandar informações do ego vehicle
         # TODO: fazer posição dos objetos detectados ser com relação a esse sensor e não absoluto
         # TODO: fazer o visualizador no pygame
+        # TODO: distância do veículo tem que ser com relação ao sensor e não ao veículo
 
     @property
     def x(self):
-        return self.world.player.get_location().x + self._x
+        return self.world.player.get_location().x + self.relative_x
 
     @property
     def y(self):
-        return self.world.player.get_location().y + self._y
+        return self.world.player.get_location().y + self.relative_y
 
     @property
     def angle(self):
-        return self.world.player.get_transform().rotation.yaw + self._angle
+        return self.world.player.get_transform().rotation.yaw + self.relative_angle
 
     def _register(self):
         request = RegisterSensor.Request()
 
         request.name = self.name
-        request.x = self.x
-        request.y = self.y
-        request.angle = self.angle
+        request.x = self.relative_x
+        request.y = self.relative_y
+        request.angle = self.relative_angle
         request.capable = self.capable
         request.measurement_noise_matrix = self.measurement_noise_matrix.reshape(-1)
 
@@ -808,14 +852,12 @@ class FakeSensor:
         return self.sensor_remover_client.call_async(request)
 
 
-    def read(self, vehicles=None, distance=10):
+    def read(self, vehicles=None, distance=50):
         if self.world is None:
             return []
 
-        t = self.world.player.get_transform()
-
-        def get_distance(l):
-            return math.sqrt((l.x - t.location.x)**2 + (l.y - t.location.y)**2)
+        def get_distance(location):
+            return math.hypot(location.x - self.x, location.y - self.y)
 
         vehicles = vehicles or self.world.world.get_actors().filter('vehicle.*')
 
@@ -837,17 +879,20 @@ class FakeSensor:
         if not self.last_measurement:
             return
 
-        msg = self._measurement_to_object_model()
+        ego_obj = actor_to_object_model(self.world.player)
+        msg = self._measurement_to_object_model(ego_obj)
+
         self.publisher.publish(msg)
 
-    def _measurement_to_object_model(self):
+    def _measurement_to_object_model(self, ego_obj):
         measurement = self.last_measurement
 
         msg = ObjectModel()
         msg.header.frame_id = self.name
         msg.header.stamp = self.time_last_measurement.to_msg()
 
-        msg.object_model = list(map(actor_to_object_model, measurement))
+        to_obj = partial(actor_to_object_model, ego_obj=ego_obj)
+        msg.object_model = list(map(to_obj, measurement))
 
         return msg
 
