@@ -147,8 +147,13 @@ def get_actor_display_name(actor, truncate=250):
     name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
     return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
 
-def get_relative(ego_obj: Object, obj: Object) -> Object:
-    angle = ego_obj.track.state[Track.STATE_YAW_IDX]
+
+def wrap_angle(theta):
+    return (theta + np.pi) % (2*np.pi) - np.pi
+
+
+def get_relative_obj(reference_obj: Object, obj: Object) -> Object:
+    angle = reference_obj.track.state[Track.STATE_YAW_IDX]
     cos_angle = np.cos(angle)
     sin_angle = np.sin(angle)
 
@@ -169,10 +174,7 @@ def get_relative(ego_obj: Object, obj: Object) -> Object:
         product = transformation @ to_align
         return np.delete(product, -1, 0).astype('float32')
 
-    def wrap_angle(theta):
-        return (theta + np.pi) % (2*np.pi) - np.pi
-
-    ego_state_aligned = align(ego_obj)
+    ego_state_aligned = align(reference_obj)
     obj_state_aligned = align(obj)
 
     result = deepcopy(obj)
@@ -187,7 +189,7 @@ def get_relative(ego_obj: Object, obj: Object) -> Object:
     return result
 
 
-def actor_to_object_model(actor, ego_obj=None):
+def actor_to_object_model(actor: carla.Actor) -> Object:
     pos = actor.get_location()
     rot = actor.get_transform().rotation
     vel = actor.get_velocity()
@@ -208,9 +210,6 @@ def actor_to_object_model(actor, ego_obj=None):
 
     obj.dimensions.values[Dimensions.DIMENSIONS_WIDTH_IDX] = bb.extent.y*2
     obj.dimensions.values[Dimensions.DIMENSIONS_LENGHT_IDX] = bb.extent.x*2
-
-    if ego_obj is not None:
-        obj = get_relative(ego_obj, obj)
 
     return obj
 
@@ -235,6 +234,7 @@ class World:
         self.hud = hud
         self.player = None
         self.fake_sensor = None
+        self.fake_sensor2 = None
         self.imu_sensor = None
         self.camera_manager = None
         self._weather_presets = find_weather_presets()
@@ -303,12 +303,15 @@ class World:
             # spawn_point = carla.Transform(location=carla.Location(-149, 1, 2), rotation=carla.Rotation(yaw=90)) # TODO: remove
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
-        # Set up the sensors.
-        self.fake_sensor = FakeSensor(self)
+
+        self.fake_sensor = FakeSensor(self, 1.0, -2.0, np.pi/4, 'sensor1')
+        self.fake_sensor2 = FakeSensor(self, -1.0, 0.5, -np.pi/3, 'sensor2')
+
         self.imu_sensor = IMUSensor(self.player)
         self.camera_manager = CameraManager(self.player, self.hud, self._gamma)
         self.camera_manager.transform_index = cam_pos_index
         self.camera_manager.set_sensor(cam_index, notify=False)
+
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
 
@@ -654,6 +657,9 @@ class HUD:
         nearby_vehicles = world.fake_sensor.read(vehicles)
         world.fake_sensor.publish_if_data()  # Maybe better in world.tick, but it's ok
 
+        world.fake_sensor2.read(vehicles)
+        world.fake_sensor2.publish_if_data()  # Maybe better in world.tick, but it's ok
+
         for distance, vehicle in nearby_vehicles:
             vehicle_type = get_actor_display_name(vehicle, truncate=22)
             self._info_text.append('    % 4dm %s' % (distance, vehicle_type))
@@ -816,10 +822,6 @@ class FakeSensor:
 
         self._register()
 
-        # TODO: fazer posição dos objetos detectados ser com relação a esse sensor e não absoluto
-        # TODO: fazer o visualizador no pygame
-        # TODO: distância do veículo tem que ser com relação ao sensor e não ao veículo
-
     @property
     def x(self):
         return self.world.player.get_location().x + self.relative_x
@@ -882,7 +884,36 @@ class FakeSensor:
         ego_obj = actor_to_object_model(self.world.player)
         msg = self._measurement_to_object_model(ego_obj)
 
+
         self.publisher.publish(msg)
+
+    def get_relative(self, obj: Object) -> Object:
+        angle = self.relative_angle
+        cos_angle = np.cos(angle)
+        sin_angle = np.sin(angle)
+
+        transformation = np.array([
+            [cos_angle, -sin_angle, 0, 0, 0, 0, 0, 0,       self.relative_x],
+            [sin_angle,  cos_angle, 0, 0, 0, 0, 0, 0,       self.relative_y],
+            [0, 0, cos_angle, -sin_angle, 0, 0, 0, 0,                     0],
+            [0, 0, sin_angle,  cos_angle, 0, 0, 0, 0,                     0],
+            [0, 0, 0, 0, cos_angle, -sin_angle, 0, 0,                     0],
+            [0, 0, 0, 0, sin_angle,  cos_angle, 0, 0,                     0],
+            [0, 0, 0, 0,          0,           0, 1, 0, self.relative_angle],
+            [0, 0, 0, 0,          0,           0, 0, 1,                   0],
+            [0, 0, 0, 0,          0,           0, 0, 0,                   1],
+        ], dtype='float32')
+
+        result = deepcopy(obj)
+
+        to_align = np.hstack((obj.track.state, 1)).T
+        transformation = np.linalg.inv(transformation)
+
+        product = transformation @ to_align
+        result.track.state = np.delete(product, -1, 0).astype('float32')
+        result.track.state[Track.STATE_YAW_IDX] = wrap_angle(result.track.state[Track.STATE_YAW_IDX])
+
+        return result
 
     def _measurement_to_object_model(self, ego_obj):
         measurement = self.last_measurement
@@ -891,8 +922,13 @@ class FakeSensor:
         msg.header.frame_id = self.name
         msg.header.stamp = self.time_last_measurement.to_msg()
 
-        to_obj = partial(actor_to_object_model, ego_obj=ego_obj)
-        msg.object_model = list(map(to_obj, measurement))
+        relative_to_ego = partial(get_relative_obj, ego_obj)
+
+        object_model = map(actor_to_object_model, measurement)
+        object_model = map(relative_to_ego, object_model)
+        object_model = map(self.get_relative, object_model)
+
+        msg.object_model = list(object_model)
 
         return msg
 
@@ -1004,7 +1040,7 @@ class CameraManager:
 # ==============================================================================
 
 
-class IMUSensor(object):
+class IMUSensor:
     def __init__(self, parent_actor):
         self.sensor = None
         self._parent = parent_actor
@@ -1087,6 +1123,7 @@ def game_loop(args):
 
         if world is not None:
             world.fake_sensor.unregister()
+            world.fake_sensor2.unregister()
 
             ros_node.destroy_node()
             rclpy.shutdown()
