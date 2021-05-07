@@ -24,7 +24,7 @@ namespace SimpleAssociation {
                 }
             }
         }
-    
+
         return idx_biggest;
     }
     
@@ -37,11 +37,11 @@ namespace SimpleAssociation {
     
         if(intersections.size()) {
             const double intersection_area = CGAL::to_double(intersections[0].outer_boundary().area());
+            const double union_area = pol1_area + pol2_area - intersection_area;
+
+            const double intersection_over_union = intersection_area / union_area;  // Jaccard index
     
-            const double intersection_coverage = intersection_area / std::min(pol1_area, pol2_area);
-            const double objs_coverage = std::min(pol1_area, pol2_area) / std::max(pol1_area, pol2_area);
-    
-            return objs_coverage * intersection_coverage;
+            return intersection_over_union;
         }
     
         return 0;
