@@ -136,6 +136,10 @@ except ImportError:
 # ==============================================================================
 
 
+# Simple time reference of the time this script is running
+STARTED_TIME = datetime.datetime.now()
+
+
 def find_weather_presets():
     rgx = re.compile('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
     name = lambda x: ' '.join(m.group(0) for m in rgx.finditer(x))
@@ -654,6 +658,9 @@ class HUD:
 
         self._info_text += ['', 'Surrounding vehicles:']
 
+        if datetime.datetime.now() - STARTED_TIME < datetime.timedelta(seconds=3):
+            return
+
         nearby_vehicles = world.fake_sensor.read(vehicles)
         world.fake_sensor.publish_if_data()  # Maybe better in world.tick, but it's ok
 
@@ -883,7 +890,6 @@ class FakeSensor:
 
         ego_obj = actor_to_object_model(self.world.player)
         msg = self._measurement_to_object_model(ego_obj)
-
 
         self.publisher.publish(msg)
 
