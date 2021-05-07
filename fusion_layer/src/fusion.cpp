@@ -66,11 +66,12 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
         uint32_t global_idx = SimpleAssociation::associate(obj, global_object_model);
 
         if(global_idx == global_object_model.size()) {  // It's a new object
-            global_object_model[object_id_counter] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
+            global_object_model[global_idx] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
         }
         else {  // Will be fused with existent global object
-            // Fusion will substitute this assignment
             fusions_counter++;
+
+            // A real fusion will substitute this assignment, for now, just replacing
             global_object_model[global_idx] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
             RCLCPP_INFO(get_logger(), "Fusion: object %u <- %u", global_idx, object_id_counter);
         }
