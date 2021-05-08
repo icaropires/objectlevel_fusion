@@ -13,7 +13,7 @@ namespace SimpleAssociation {
     uint32_t associate(const object_model_msgs::msg::Object& received,
             const std::map<uint32_t, object_model_msgs::msg::Object::SharedPtr>& global_object_model,
             double break_threshold = 0.9,
-            double minimum_score = 0.7);
+            double minimum_score = 0.1);
     
     Polygon obj_to_rectangle(const object_model_msgs::msg::Object& object);
     

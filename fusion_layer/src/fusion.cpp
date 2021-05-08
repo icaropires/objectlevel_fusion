@@ -22,6 +22,25 @@ Fusion::~Fusion() {
     rclcpp::shutdown();
 }
 
+void Fusion::log_csv_style(const object_model_msgs::msg::ObjectModel::SharedPtr msg, const state_t& state) {
+    using object_model_msgs::msg::Track;
+
+    std::string timestamp = std::to_string(get_timestamp(msg));
+
+    // Didn't add \n to add more attributes in other points in code
+    fprintf(stdout,
+            "%s,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f",
+            timestamp.c_str(),
+            state[Track::STATE_X_IDX],
+            state[Track::STATE_Y_IDX],
+            state[Track::STATE_VELOCITY_X_IDX],
+            state[Track::STATE_VELOCITY_Y_IDX],
+            state[Track::STATE_ACCELERATION_X_IDX],
+            state[Track::STATE_ACCELERATION_Y_IDX],
+            state[Track::STATE_YAW_IDX],
+            state[Track::STATE_YAW_RATE_IDX]);
+}
+
 void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) {
     using object_model_msgs::msg::Dimensions;
 
@@ -29,7 +48,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     RCLCPP_INFO(get_logger(), "Received message from: %s", sensor_name.c_str());
 
     if(sensors.find(sensor_name) == sensors.end()) {
-        RCLCPP_WARN(get_logger(), "Sensor '%s' not registered, ignoring message..", sensor_name.c_str());
+        RCLCPP_WARN(get_logger(), "Sensor '%s' is not registered, ignoring message..", sensor_name.c_str());
         return;
     }
 
@@ -63,17 +82,23 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 
         obj.track.state = spatially_aligned_state;
 
+        log_csv_style(msg, obj.track.state); // Adding state attributes to CSV line
+
         uint32_t global_idx = SimpleAssociation::associate(obj, global_object_model);
 
         if(global_idx == global_object_model.size()) {  // It's a new object
-            global_object_model[object_id_counter] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
+            global_object_model[global_idx] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
         }
         else {  // Will be fused with existent global object
-            // Fusion will substitute this assignment
             fusions_counter++;
+
+            // A real fusion will substitute this assignment. For now, just replacing
             global_object_model[global_idx] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
             RCLCPP_INFO(get_logger(), "Fusion: object %u <- %u", global_idx, object_id_counter);
         }
+
+        fprintf(stdout, "\n");  // Ending CSV line
+        fflush(stdout);
 
         RCLCPP_INFO(get_logger(), "\n");
     }
@@ -134,7 +159,7 @@ void Fusion::remove_sensor(const std::shared_ptr<fusion_layer::srv::RemoveSensor
 
     try {
         if (sensors.find(request->name) == sensors.end()) {
-           throw std::runtime_error("Failed to remove sensor! Sensor '" + request->name + "' not registered."); 
+           throw std::runtime_error("Failed to remove sensor! Sensor '" + request->name + "' is not registered.");
         }
 
         sensors.erase(request->name);

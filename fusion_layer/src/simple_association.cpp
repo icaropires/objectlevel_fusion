@@ -14,7 +14,7 @@ namespace SimpleAssociation {
         for(const auto& global: global_object_model) {
             const Polygon global_rectangle = obj_to_rectangle(*global.second);
     
-            double association_score = get_association_score(received_rectangle, global_rectangle);
+            const double association_score = get_association_score(received_rectangle, global_rectangle);
             if(association_score > biggest_score){
                 idx_biggest = global.first;
                 biggest_score = association_score;
@@ -24,7 +24,13 @@ namespace SimpleAssociation {
                 }
             }
         }
-    
+
+        // Adding attributes to CSV
+        fprintf(stdout, ",%d,%0.3f,%d",
+                idx_biggest,
+                biggest_score,
+                idx_biggest == global_object_model.size());
+
         return idx_biggest;
     }
     
@@ -37,11 +43,11 @@ namespace SimpleAssociation {
     
         if(intersections.size()) {
             const double intersection_area = CGAL::to_double(intersections[0].outer_boundary().area());
+            const double union_area = pol1_area + pol2_area - intersection_area;
+
+            const double intersection_over_union = intersection_area / union_area;  // Jaccard index
     
-            const double intersection_coverage = intersection_area / std::min(pol1_area, pol2_area);
-            const double objs_coverage = std::min(pol1_area, pol2_area) / std::max(pol1_area, pol2_area);
-    
-            return objs_coverage * intersection_coverage;
+            return intersection_over_union;
         }
     
         return 0;
