@@ -16,6 +16,9 @@
 #include "fusion_layer/simple_association.hpp"
 #include "types.hpp"
 
+#include <cstdio>
+#include <cmath>
+
 class Fusion : public rclcpp::Node
 {
 private:
@@ -55,6 +58,8 @@ private:
         std::shared_ptr<fusion_layer::srv::RemoveSensor::Response> response);
   
     void log_state(const std::string& label, uint32_t obj_id, const state_t& state);
+
+    void log_csv_style(const object_model_msgs::msg::ObjectModel::SharedPtr msg, const state_t& state);
   
     static uint64_t get_timestamp(const object_model_msgs::msg::ObjectModel::SharedPtr msg);
   

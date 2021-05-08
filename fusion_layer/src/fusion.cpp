@@ -22,6 +22,25 @@ Fusion::~Fusion() {
     rclcpp::shutdown();
 }
 
+void Fusion::log_csv_style(const object_model_msgs::msg::ObjectModel::SharedPtr msg, const state_t& state) {
+    using object_model_msgs::msg::Track;
+
+    std::string timestamp = std::to_string(get_timestamp(msg));
+
+    // Didn't add \n to add more attributes in other points in code
+    fprintf(stdout,
+            "%s,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f",
+            timestamp.c_str(),
+            state[Track::STATE_X_IDX],
+            state[Track::STATE_Y_IDX],
+            state[Track::STATE_VELOCITY_X_IDX],
+            state[Track::STATE_VELOCITY_Y_IDX],
+            state[Track::STATE_ACCELERATION_X_IDX],
+            state[Track::STATE_ACCELERATION_Y_IDX],
+            state[Track::STATE_YAW_IDX],
+            state[Track::STATE_YAW_RATE_IDX]);
+}
+
 void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) {
     using object_model_msgs::msg::Dimensions;
 
@@ -63,6 +82,8 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 
         obj.track.state = spatially_aligned_state;
 
+        log_csv_style(msg, obj.track.state); // Adding state attributes to CSV line
+
         uint32_t global_idx = SimpleAssociation::associate(obj, global_object_model);
 
         if(global_idx == global_object_model.size()) {  // It's a new object
@@ -71,10 +92,13 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
         else {  // Will be fused with existent global object
             fusions_counter++;
 
-            // A real fusion will substitute this assignment, for now, just replacing
+            // A real fusion will substitute this assignment. For now, just replacing
             global_object_model[global_idx] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
             RCLCPP_INFO(get_logger(), "Fusion: object %u <- %u", global_idx, object_id_counter);
         }
+
+        fprintf(stdout, "\n");  // Ending CSV line
+        fflush(stdout);
 
         RCLCPP_INFO(get_logger(), "\n");
     }

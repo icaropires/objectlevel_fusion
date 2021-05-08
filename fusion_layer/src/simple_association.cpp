@@ -14,7 +14,7 @@ namespace SimpleAssociation {
         for(const auto& global: global_object_model) {
             const Polygon global_rectangle = obj_to_rectangle(*global.second);
     
-            double association_score = get_association_score(received_rectangle, global_rectangle);
+            const double association_score = get_association_score(received_rectangle, global_rectangle);
             if(association_score > biggest_score){
                 idx_biggest = global.first;
                 biggest_score = association_score;
@@ -24,6 +24,12 @@ namespace SimpleAssociation {
                 }
             }
         }
+
+        // Adding attributes to CSV
+        fprintf(stdout, ",%d,%0.3f,%d",
+                idx_biggest,
+                biggest_score,
+                idx_biggest == global_object_model.size());
 
         return idx_biggest;
     }
