@@ -29,6 +29,8 @@ Use ARROWS or WASD keys for control.
 
     R            : toggle recording images to disk
 
+    T             : restart fake sensors
+
     CTRL + R     : toggle recording of simulation (replacing any previous)
     CTRL + P     : start replaying last recorded simulation
     CTRL + +     : increments the start time of the replay by 1 second (+SHIFT = 10 seconds)
@@ -116,6 +118,7 @@ try:
     from pygame.locals import K_q
     from pygame.locals import K_r
     from pygame.locals import K_s
+    from pygame.locals import K_t
     from pygame.locals import K_v
     from pygame.locals import K_w
     from pygame.locals import K_x
@@ -137,7 +140,7 @@ except ImportError:
 
 
 # Simple time reference of the time this script is running
-STARTED_TIME = datetime.datetime.now()
+STARTED_TIME = None
 
 
 def find_weather_presets():
@@ -217,6 +220,7 @@ def actor_to_object_model(actor: carla.Actor) -> Object:
 
     return obj
 
+
 # ==============================================================================
 # -- World ---------------------------------------------------------------------
 # ==============================================================================
@@ -224,6 +228,9 @@ def actor_to_object_model(actor: carla.Actor) -> Object:
 
 class World:
     def __init__(self, carla_world, hud, ros_node, args):
+        self._csv = None
+        self.open_csv()
+
         self.world = carla_world
         self.actor_role_name = args.rolename
         self.ros_node = ros_node
@@ -265,6 +272,12 @@ class World:
             carla.MapLayer.All
         ]
 
+    def open_csv(self, name="ego_info.csv"):
+        self._csv = open(name, "w")
+
+    def close_csv(self):
+        self._csv.close()
+
     def restart(self):
         self.player_max_speed = 1.589
         self.player_max_speed_fast = 3.713
@@ -304,7 +317,12 @@ class World:
                 sys.exit(1)
             spawn_points = self.map.get_spawn_points()
             spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
-            # spawn_point = carla.Transform(location=carla.Location(-149, 1, 2), rotation=carla.Rotation(yaw=90)) # TODO: remove
+
+            spawn_point = carla.Transform(
+                carla.Location(-149, -80, 2),
+                rotation=carla.Rotation(yaw=90)
+            )
+
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
 
@@ -318,6 +336,15 @@ class World:
 
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
+
+    def add_info_csv(self, fake_sensor, ego_obj, msg):
+        time_ = self.ros_node.get_clock().now().from_msg(msg.header.stamp)
+
+        list_ = [time_.nanoseconds, fake_sensor.name, len(msg.object_model)]
+        list_.extend(list(np.round(ego_obj.track.state, 5)))
+
+        self._csv.write(','.join(str(e) for e in list_) + '\n')
+        self._csv.flush()
 
     def next_weather(self, reverse=False):
         self._weather_index += -1 if reverse else 1
@@ -367,6 +394,8 @@ class World:
                 sensor.destroy()
         if self.player is not None:
             self.player.destroy()
+
+        self.close_csv()
 
 
 # ==============================================================================
@@ -449,7 +478,7 @@ class KeyboardControl:
                         world.recording_enabled = False
                         world.hud.notification("Recorder is OFF")
                     else:
-                        client.start_recorder("manual_recording.rec")
+                        client.start_recorder("manual_recording.rec", True)
                         world.recording_enabled = True
                         world.hud.notification("Recorder is ON")
                 elif event.key == K_p and (pygame.key.get_mods() & KMOD_CTRL):
@@ -523,6 +552,31 @@ class KeyboardControl:
                         current_lights ^= carla.VehicleLightState.LeftBlinker
                     elif event.key == K_x:
                         current_lights ^= carla.VehicleLightState.RightBlinker
+                    elif event.key == K_t:
+                        world.hud.notification("Restarting Fake Sensors")
+
+                        world.close_csv()
+                        world.open_csv()
+
+                        world.fake_sensor.destroy()
+                        world.fake_sensor2.destroy()
+
+                        world.fake_sensor = FakeSensor(
+                            world,
+                            world.fake_sensor.relative_x,
+                            world.fake_sensor.relative_y,
+                            world.fake_sensor.relative_angle,
+                            world.fake_sensor.name
+                        )
+
+                        world.fake_sensor2 = FakeSensor(
+                            world,
+                            world.fake_sensor2.relative_x,
+                            world.fake_sensor2.relative_y,
+                            world.fake_sensor2.relative_angle,
+                            world.fake_sensor2.name
+                        )
+
 
         if not self._autopilot_enabled:
             if isinstance(self._control, carla.VehicleControl):
@@ -658,10 +712,18 @@ class HUD:
 
         self._info_text += ['', 'Surrounding vehicles:']
 
-        if datetime.datetime.now() - STARTED_TIME < datetime.timedelta(seconds=3):
-            return
-
         nearby_vehicles = world.fake_sensor.read(vehicles)
+
+        global STARTED_TIME
+
+        if len(nearby_vehicles) > 1:
+            if STARTED_TIME is None:
+                STARTED_TIME = datetime.datetime.now()
+                return
+
+            if datetime.datetime.now() - STARTED_TIME < datetime.timedelta(seconds=2):
+                return
+
         world.fake_sensor.publish_if_data()  # Maybe better in world.tick, but it's ok
 
         world.fake_sensor2.read(vehicles)
@@ -854,6 +916,9 @@ class FakeSensor:
         self.sensor_registration_client.call_async(request)
         self.node.get_logger().info(f"Sensor {self.name} registered successfully!")
 
+    def destroy(self):
+        self.unregister()
+
     def unregister(self):
         request = RemoveSensor.Request()
         request.name = self.name
@@ -880,7 +945,6 @@ class FakeSensor:
 
         return distances
 
-
     def publish_if_data(self):
         if self.last_measurement is None:
             raise RuntimeError("Trying to publish before first read")
@@ -889,9 +953,10 @@ class FakeSensor:
             return
 
         ego_obj = actor_to_object_model(self.world.player)
-        msg = self._measurement_to_object_model(ego_obj)
+        msg = self._measurement_to_msg(ego_obj)
 
         self.publisher.publish(msg)
+        self.world.add_info_csv(self, ego_obj, msg)
 
     def get_relative(self, obj: Object) -> Object:
         angle = self.relative_angle
@@ -921,7 +986,7 @@ class FakeSensor:
 
         return result
 
-    def _measurement_to_object_model(self, ego_obj):
+    def _measurement_to_msg(self, ego_obj):
         measurement = self.last_measurement
 
         msg = ObjectModel()
