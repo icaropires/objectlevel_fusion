@@ -164,34 +164,40 @@ def get_relative_obj(reference_obj: Object, obj: Object) -> Object:
     cos_angle = np.cos(angle)
     sin_angle = np.sin(angle)
 
+    rotation_reference = np.array([
+        [cos_angle, -sin_angle, 0, 0, 0, 0, 0, 0],
+        [sin_angle,  cos_angle, 0, 0, 0, 0, 0, 0],
+        [0, 0, cos_angle, -sin_angle, 0, 0, 0, 0],
+        [0, 0, sin_angle,  cos_angle, 0, 0, 0, 0],
+        [0, 0, 0, 0, cos_angle, -sin_angle, 0, 0],
+        [0, 0, 0, 0, sin_angle,  cos_angle, 0, 0],
+        [0, 0, 0, 0,          0,         0, 1, 0],
+        [0, 0, 0, 0,          0,         0, 0, 1],
+    ], dtype='float64')
+
+    rotated_reference = rotation_reference @ reference_obj.track.state
+
     transformation = np.array([
-        [cos_angle, -sin_angle, 0, 0, 0, 0, 0, 0,   0],
-        [sin_angle,  cos_angle, 0, 0, 0, 0, 0, 0,   0],
-        [0, 0, cos_angle, -sin_angle, 0, 0, 0, 0,   0],
-        [0, 0, sin_angle,  cos_angle, 0, 0, 0, 0,   0],
-        [0, 0, 0, 0, cos_angle, -sin_angle, 0, 0,   0],
-        [0, 0, 0, 0, sin_angle,  cos_angle, 0, 0,   0],
-        [0, 0, 0, 0,          0,           0, 1, 0, 0],
-        [0, 0, 0, 0,          0,           0, 0, 1, 0],
-        [0, 0, 0, 0,          0,           0, 0, 0, 1],
-    ], dtype='float32')
+        [cos_angle, -sin_angle, 0, 0, 0, 0, 0, 0, -rotated_reference[Track.STATE_X_IDX]],
+        [-sin_angle, -cos_angle, 0, 0, 0, 0, 0, 0, rotated_reference[Track.STATE_Y_IDX]],
+        [0, 0, cos_angle, -sin_angle, 0, 0, 0, 0, -rotated_reference[Track.STATE_VELOCITY_X_IDX]],
+        [0, 0, -sin_angle, -cos_angle, 0, 0, 0, 0, rotated_reference[Track.STATE_VELOCITY_Y_IDX]],
+        [0, 0, 0, 0, cos_angle, -sin_angle, 0, 0, -rotated_reference[Track.STATE_ACCELERATION_X_IDX]],
+        [0, 0, 0, 0, -sin_angle, -cos_angle, 0, 0, rotated_reference[Track.STATE_ACCELERATION_Y_IDX]],
+        [0, 0, 0, 0,          0,         0, 1, 0, -rotated_reference[Track.STATE_YAW_IDX]],
+        [0, 0, 0, 0,          0,         0, 0, 1, -rotated_reference[Track.STATE_YAW_RATE_IDX]],
+        [0, 0, 0, 0,          0,         0, 0, 0,   1],
+    ], dtype='float64')
 
-    def align(obj_to_align):
-        to_align = np.hstack((obj_to_align.track.state, 1)).T
-        product = transformation @ to_align
-        return np.delete(product, -1, 0).astype('float32')
-
-    ego_state_aligned = align(reference_obj)
-    obj_state_aligned = align(obj)
+    to_align = np.hstack((obj.track.state, 1)).T
+    product = transformation @ to_align
+    obj_state_aligned = np.delete(product, -1, 0).astype('float32')
 
     result = deepcopy(obj)
-    result.track.state = obj_state_aligned - ego_state_aligned
+    result.track.state = obj_state_aligned
     result.track.state[Track.STATE_YAW_IDX] = wrap_angle(result.track.state[Track.STATE_YAW_IDX])
 
-    # Mirroring Y axis
-    result.track.state[Track.STATE_Y_IDX] = -result.track.state[Track.STATE_Y_IDX]
-    result.track.state[Track.STATE_VELOCITY_Y_IDX] = -result.track.state[Track.STATE_VELOCITY_Y_IDX]
-    result.track.state[Track.STATE_ACCELERATION_Y_IDX] = -result.track.state[Track.STATE_ACCELERATION_Y_IDX]
+    # print('========>', [e for e in np.round(result.track.state, 5)])
 
     return result
 
