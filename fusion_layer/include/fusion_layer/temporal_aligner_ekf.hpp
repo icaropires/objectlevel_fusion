@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <utility>
 #include <string>
 #include <stdexcept>
 #include <Eigen/Dense>
@@ -21,7 +22,13 @@ class TemporalAlignerEKF : public TemporalAligner {
     TemporalAlignerEKF();
     TemporalAlignerEKF(const state_t& initial_state);
 
-    enum CTRAIndexes {X_IDX, Y_IDX, YAW_IDX, VELOCITY_IDX, YAW_RATE_IDX, ACCELERATION_IDX};
+    /*
+     * Index for ctra_state.
+     *
+     * In this work heading is different from yaw. Heading is about the direction the object is going (velocity vector direction),
+     *   and yaw is the orientation of the object.
+     */
+    enum CTRAIndexes {X_IDX, Y_IDX, HEADING_IDX, VELOCITY_IDX, YAW_RATE_IDX, ACCELERATION_IDX};
     
     state_t align(float delta_t);
     static void align(float delta_t, state_t& state, ctra_squared_t& covariation);
@@ -29,9 +36,18 @@ class TemporalAlignerEKF : public TemporalAligner {
     state_t get_state() const;
     void update(const state_t& measurement, const ctra_squared_t& measurement_noise_matrix, const capable_vector_t& capable);
 
-    static state_t format_to_object_model(const ctra_array_t& state);
+    /*
+    * From [x, y, heading, v, yaw_rate, a] to [x, y, vx, vy, ax, ay, yaw, yaw_rate]
+    * yaw must be replaced in the result manually
+    */
+    static state_t format_to_object_model(const ctra_array_t& state, float yaw, float velocity_heading, float acceleration_heading);
 
+    /*
+    * From [x, y, vx, vy, ax, ay, yaw, yaw_rate] to [x, y, heading, v, yaw_rate, a]
+    */
     static ctra_array_t format_from_object_model(const state_t& state);
+
+    static std::pair<float, float> get_headings(const state_t& state);
 
  private:
     void predict(float delta_t);

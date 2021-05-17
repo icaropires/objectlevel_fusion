@@ -164,34 +164,40 @@ def get_relative_obj(reference_obj: Object, obj: Object) -> Object:
     cos_angle = np.cos(angle)
     sin_angle = np.sin(angle)
 
+    rotation_reference = np.array([
+        [cos_angle, -sin_angle, 0, 0, 0, 0, 0, 0],
+        [sin_angle,  cos_angle, 0, 0, 0, 0, 0, 0],
+        [0, 0, cos_angle, -sin_angle, 0, 0, 0, 0],
+        [0, 0, sin_angle,  cos_angle, 0, 0, 0, 0],
+        [0, 0, 0, 0, cos_angle, -sin_angle, 0, 0],
+        [0, 0, 0, 0, sin_angle,  cos_angle, 0, 0],
+        [0, 0, 0, 0,          0,         0, 1, 0],
+        [0, 0, 0, 0,          0,         0, 0, 1],
+    ], dtype='float64')
+
+    rotated_reference = rotation_reference @ reference_obj.track.state
+
     transformation = np.array([
-        [cos_angle, -sin_angle, 0, 0, 0, 0, 0, 0,   0],
-        [sin_angle,  cos_angle, 0, 0, 0, 0, 0, 0,   0],
-        [0, 0, cos_angle, -sin_angle, 0, 0, 0, 0,   0],
-        [0, 0, sin_angle,  cos_angle, 0, 0, 0, 0,   0],
-        [0, 0, 0, 0, cos_angle, -sin_angle, 0, 0,   0],
-        [0, 0, 0, 0, sin_angle,  cos_angle, 0, 0,   0],
-        [0, 0, 0, 0,          0,           0, 1, 0, 0],
-        [0, 0, 0, 0,          0,           0, 0, 1, 0],
-        [0, 0, 0, 0,          0,           0, 0, 0, 1],
-    ], dtype='float32')
+        [cos_angle, -sin_angle, 0, 0, 0, 0, 0, 0, -rotated_reference[Track.STATE_X_IDX]],
+        [-sin_angle, -cos_angle, 0, 0, 0, 0, 0, 0, rotated_reference[Track.STATE_Y_IDX]],
+        [0, 0, cos_angle, -sin_angle, 0, 0, 0, 0, -rotated_reference[Track.STATE_VELOCITY_X_IDX]],
+        [0, 0, -sin_angle, -cos_angle, 0, 0, 0, 0, rotated_reference[Track.STATE_VELOCITY_Y_IDX]],
+        [0, 0, 0, 0, cos_angle, -sin_angle, 0, 0, -rotated_reference[Track.STATE_ACCELERATION_X_IDX]],
+        [0, 0, 0, 0, -sin_angle, -cos_angle, 0, 0, rotated_reference[Track.STATE_ACCELERATION_Y_IDX]],
+        [0, 0, 0, 0,          0,         0, 1, 0, -rotated_reference[Track.STATE_YAW_IDX]],
+        [0, 0, 0, 0,          0,         0, 0, 1, -rotated_reference[Track.STATE_YAW_RATE_IDX]],
+        [0, 0, 0, 0,          0,         0, 0, 0,   1],
+    ], dtype='float64')
 
-    def align(obj_to_align):
-        to_align = np.hstack((obj_to_align.track.state, 1)).T
-        product = transformation @ to_align
-        return np.delete(product, -1, 0).astype('float32')
-
-    ego_state_aligned = align(reference_obj)
-    obj_state_aligned = align(obj)
+    to_align = np.hstack((obj.track.state, 1)).T
+    product = transformation @ to_align
+    obj_state_aligned = np.delete(product, -1, 0).astype('float32')
 
     result = deepcopy(obj)
-    result.track.state = obj_state_aligned - ego_state_aligned
+    result.track.state = obj_state_aligned
     result.track.state[Track.STATE_YAW_IDX] = wrap_angle(result.track.state[Track.STATE_YAW_IDX])
 
-    # Mirroring Y axis
-    result.track.state[Track.STATE_Y_IDX] = -result.track.state[Track.STATE_Y_IDX]
-    result.track.state[Track.STATE_VELOCITY_Y_IDX] = -result.track.state[Track.STATE_VELOCITY_Y_IDX]
-    result.track.state[Track.STATE_ACCELERATION_Y_IDX] = -result.track.state[Track.STATE_ACCELERATION_Y_IDX]
+    print('========>', [e for e in np.round(result.track.state, 5)])
 
     return result
 
@@ -710,28 +716,14 @@ class HUD:
             'Number of vehicles: % 8d' % len(vehicles)
         ]
 
-        self._info_text += ['', 'Surrounding vehicles:']
-
         nearby_vehicles = world.fake_sensor.read(vehicles)
 
-        global STARTED_TIME
+        if nearby_vehicles:
+            self._info_text += ['', 'Surrounding vehicles:']
 
-        if len(nearby_vehicles) > 1:
-            if STARTED_TIME is None:
-                STARTED_TIME = datetime.datetime.now()
-                return
-
-            if datetime.datetime.now() - STARTED_TIME < datetime.timedelta(seconds=2):
-                return
-
-        world.fake_sensor.publish_if_data()  # Maybe better in world.tick, but it's ok
-
-        world.fake_sensor2.read(vehicles)
-        world.fake_sensor2.publish_if_data()  # Maybe better in world.tick, but it's ok
-
-        for distance, vehicle in nearby_vehicles:
-            vehicle_type = get_actor_display_name(vehicle, truncate=22)
-            self._info_text.append('    % 4dm %s' % (distance, vehicle_type))
+            for distance, vehicle in nearby_vehicles:
+                vehicle_type = get_actor_display_name(vehicle, truncate=22)
+                self._info_text.append('    % 4dm %s' % (distance, vehicle_type))
 
     def toggle_info(self):
         self._show_info = not self._show_info
@@ -891,6 +883,30 @@ class FakeSensor:
 
         self._register()
 
+        # Nested to use 'self' from the context
+        def _callback(_):
+            # Not using WorldSnapshot because it doesn't have type_id information
+            #   and ActorSnapshot doesn't have get_location()
+
+            global STARTED_TIME
+
+            vehicles = self.world.world.get_actors().filter('vehicle.*')
+            nearby_vehicles = [v for d, v in self.read(vehicles)]
+
+            if len(nearby_vehicles) == 0:
+                return
+
+            # Discard first seconds of simulation, they're noisy
+            if STARTED_TIME is None:
+                STARTED_TIME = datetime.datetime.now()
+                return
+            if datetime.datetime.now() - STARTED_TIME < datetime.timedelta(seconds=2):
+                return
+
+            self.publish(nearby_vehicles)
+
+        self._callback_id = self.world.world.on_tick(_callback)
+
     @property
     def x(self):
         return self.world.player.get_location().x + self.relative_x
@@ -917,9 +933,10 @@ class FakeSensor:
         self.node.get_logger().info(f"Sensor {self.name} registered successfully!")
 
     def destroy(self):
-        self.unregister()
+        self.world.world.remove_on_tick(self._callback_id)
+        self._unregister()
 
-    def unregister(self):
+    def _unregister(self):
         request = RemoveSensor.Request()
         request.name = self.name
 
@@ -938,22 +955,15 @@ class FakeSensor:
         distances = ((get_distance(veh.get_location()), veh)
                      for veh in vehicles if veh.id != self.world.player.id)
 
-        distances = sorted([(d, veh) for d, veh in distances if d < distance])
+        distances = sorted([(d, veh) for d, veh in distances if d <= distance])
 
-        self.last_measurement = [veh for d, veh in distances]
         self.time_last_measurement = self.node.get_clock().now()
 
         return distances
 
-    def publish_if_data(self):
-        if self.last_measurement is None:
-            raise RuntimeError("Trying to publish before first read")
-
-        if not self.last_measurement:
-            return
-
+    def publish(self, measurement):
         ego_obj = actor_to_object_model(self.world.player)
-        msg = self._measurement_to_msg(ego_obj)
+        msg = self._measurement_to_msg(measurement, ego_obj)
 
         self.publisher.publish(msg)
         self.world.add_info_csv(self, ego_obj, msg)
@@ -986,9 +996,7 @@ class FakeSensor:
 
         return result
 
-    def _measurement_to_msg(self, ego_obj):
-        measurement = self.last_measurement
-
+    def _measurement_to_msg(self, measurement, ego_obj):
         msg = ObjectModel()
         msg.header.frame_id = self.name
         msg.header.stamp = self.time_last_measurement.to_msg()
@@ -1193,8 +1201,8 @@ def game_loop(args):
             client.stop_recorder()
 
         if world is not None:
-            world.fake_sensor.unregister()
-            world.fake_sensor2.unregister()
+            world.fake_sensor.destroy()
+            world.fake_sensor2.destroy()
 
             ros_node.destroy_node()
             rclpy.shutdown()

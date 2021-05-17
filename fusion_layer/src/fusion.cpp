@@ -5,6 +5,7 @@ Fusion::Fusion()
     object_id_counter(0),
     fusions_counter(0),
     input_topic("objectlevel_fusion/fusion_layer/fusion/submit"),
+    output_topic("objectlevel_fusion/fusion_layer/fusion/get"),
     time_last_msg(0)
 {
     register_sensor_srv_ = create_service<fusion_layer::srv::RegisterSensor>("fusion_layer/register_sensor",
@@ -14,8 +15,10 @@ Fusion::Fusion()
             std::bind(&Fusion::remove_sensor, this, std::placeholders::_1, std::placeholders::_2));
 
     subscription_ = create_subscription<object_model_msgs::msg::ObjectModel>(
-        input_topic, 10, std::bind(&Fusion::topic_callback, this, std::placeholders::_1)
+        input_topic, 10, std::bind(&Fusion::input_callback, this, std::placeholders::_1)
     );
+
+    publisher_ = this->create_publisher<object_model_msgs::msg::ObjectModel>(output_topic, 10);
 }
 
 Fusion::~Fusion() {
@@ -25,12 +28,14 @@ Fusion::~Fusion() {
 void Fusion::log_csv_style(const object_model_msgs::msg::ObjectModel::SharedPtr msg, const state_t& state) {
     using object_model_msgs::msg::Track;
 
-    std::string timestamp = std::to_string(get_timestamp(msg));
+    const std::string timestamp = std::to_string(get_timestamp(msg));
+    const std::string sensor_name = msg->header.frame_id;
 
     // Didn't add \n to add more attributes in other points in code
     fprintf(stdout,
-            "%s,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f",
+            "%s,%s,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f",
             timestamp.c_str(),
+            sensor_name.c_str(),
             state[Track::STATE_X_IDX],
             state[Track::STATE_Y_IDX],
             state[Track::STATE_VELOCITY_X_IDX],
@@ -41,7 +46,7 @@ void Fusion::log_csv_style(const object_model_msgs::msg::ObjectModel::SharedPtr 
             state[Track::STATE_YAW_RATE_IDX]);
 }
 
-void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) {
+void Fusion::input_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg) {
     using object_model_msgs::msg::Dimensions;
 
     const std::string sensor_name = msg->header.frame_id;
@@ -108,11 +113,31 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
     RCLCPP_INFO(get_logger(), "Number of objects being tracked: %d", global_object_model.size());
     RCLCPP_INFO(get_logger(), "Number of fusions performed: %d", fusions_counter);
     RCLCPP_INFO(get_logger(), "\n\n");
+
+    publish();
+}
+
+void Fusion::publish() {
+    object_model_msgs::msg::ObjectModel msg;
+
+    msg.object_model = std::vector<object_model_msgs::msg::Object>(global_object_model.size());
+
+    int count = 0;
+    for(const auto& obj: global_object_model) {
+        msg.object_model[count] = *obj.second;
+        count++;
+    }
+
+    msg.header.frame_id = "fusion_layer";
+    msg.header.stamp = get_clock()->now();
+
+    publisher_->publish(msg);
 }
 
 void Fusion::temporally_align_global_objects(float delta_t) {
     for(auto& object_pair : global_object_model)  {
         auto global_object = object_pair.second;
+
         TemporalAlignerEKF::align(delta_t, global_object->track.state, global_object->track.covariation);
     }
 }
