@@ -51,6 +51,7 @@ def main(args=None):
 
     rclpy.spin(application_layer_csv)
 
+    application_layer_csv.finish()
     application_layer_csv.destroy_node()
 
 if __name__ == '__main__':
