@@ -16,26 +16,38 @@ state_t TemporalAlignerEKF::align(float delta_t) {
     if(not is_initialized) {
         throw std::runtime_error("TemporalAlignerEKF must be initialized first!");
     }
+
+    // TODO: Adapt to consider heading
+    throw std::runtime_error("This method must be rethinked to consider yaw vs heading");
+
     predict(delta_t);
 
-    return get_state();
+    // return get_state();
+    state_t tmp_empty_state;
+    return tmp_empty_state;
 }
 
 void TemporalAlignerEKF::align(float delta_t, state_t& state, ctra_squared_t& covariation) {
+    using namespace object_model_msgs::msg;
+
+    const float yaw = state[Track::STATE_YAW_IDX];
+    const auto[velocity_heading, acceleration_heading] = get_headings(state);
+
     ctra_array_t ctra_state = format_from_object_model(state);
     ctra_matrix_t covariation_matrix(covariation.data());
 
     predict(delta_t, ctra_state, covariation_matrix);
 
-    state = format_to_object_model(ctra_state);
+    state = format_to_object_model(ctra_state, yaw, velocity_heading, acceleration_heading);
 
     float *covariation_carray_ptr = covariation_matrix.data();
     std::copy(covariation_carray_ptr, covariation_carray_ptr+(ctra_size_t*ctra_size_t), std::begin(covariation));
 }
 
-state_t TemporalAlignerEKF::get_state() const {
-    return format_to_object_model(state_array);
-}
+// TODO: Adapt to consider heading
+// state_t TemporalAlignerEKF::get_state() const {
+//     return format_to_object_model(state_array);
+// }
 
 void TemporalAlignerEKF::predict(float delta_t) {
     Q = calculate_process_noise(delta_t);
@@ -66,34 +78,41 @@ ctra_matrix_t TemporalAlignerEKF::calculate_process_noise(float delta_t) {
 }
 
 ctra_array_t TemporalAlignerEKF::predict_state(float delta_t, const ctra_array_t& state) {
-    float dt = delta_t;
-    float pos_x = state[X_IDX], pos_y = state[Y_IDX], yaw = state[YAW_IDX];
-    float velocity = state[VELOCITY_IDX], yaw_rate = state[YAW_RATE_IDX], acceleration = state[ACCELERATION_IDX];
+    double dt = delta_t;
+    double pos_x = state[X_IDX], pos_y = state[Y_IDX], heading = state[HEADING_IDX];
+    double velocity = state[VELOCITY_IDX], yaw_rate = state[YAW_RATE_IDX], acceleration = state[ACCELERATION_IDX];
 
     ctra_array_t predicted_state;
 
-    if(abs(yaw_rate) <  0.00001) {
+    if(abs(yaw_rate) < 0.00001) {
         yaw_rate = 0.00001;
     }
 
-    predicted_state[X_IDX] = pos_x + (1 / pow(yaw_rate, 2)) *
+    double new_x = pos_x + (1 / pow(yaw_rate, 2)) *
         (
-            (velocity*yaw_rate + acceleration * yaw_rate * dt) * sinf(yaw + yaw_rate * dt)
-            + acceleration * cosf(yaw + yaw_rate * dt)
-            - velocity * yaw_rate * sinf(yaw) - acceleration * cosf(yaw)
+            (velocity*yaw_rate + acceleration * yaw_rate * dt) * sin(heading + yaw_rate * dt)
+            + acceleration * cos(heading + yaw_rate * dt)
+            - velocity * yaw_rate * sin(heading) - acceleration * cos(heading)
         );
 
-    predicted_state[Y_IDX] = pos_y + (1 / pow(yaw_rate, 2)) *
+    fprintf(stderr, "UEEEEEE %0.2f\n", state[Y_IDX]);
+    fprintf(stderr, "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f\n", pos_y, yaw_rate, velocity, acceleration, dt, heading);
+    double new_y = pos_y + (1 / pow(yaw_rate, 2)) *
         (
-            (-velocity*yaw_rate - acceleration * yaw_rate * dt) * cosf(yaw + yaw_rate * dt)
-            + acceleration * sinf(yaw + yaw_rate * dt)
-            + velocity * yaw_rate * cosf(yaw) - acceleration * sinf(yaw)
+            (-velocity*yaw_rate - acceleration * yaw_rate * dt) * cos(heading + yaw_rate * dt)
+            + acceleration * sin(heading + yaw_rate * dt)
+            + velocity * yaw_rate * cos(heading) - acceleration * sin(heading)
         );
+    predicted_state[X_IDX] = new_x;
+    predicted_state[Y_IDX] = new_y;
+
+    fprintf(stderr, "UEEEEEE %0.5f\n", predicted_state[Y_IDX]);
+    fprintf(stderr, "2UEEEEEE %0.5lf\n", new_y);
 
     // Wraps angle in [-pi, pi). Check experiment directory for more information
-    yaw = yaw + yaw_rate * dt;
-    constexpr float two_pi = M_PI*2;
-    predicted_state[YAW_IDX] = fmod(fmod(yaw + M_PI, two_pi) + two_pi, two_pi) - M_PI;
+    heading = heading + yaw_rate * dt;
+    constexpr double two_pi = M_PI*2;
+    predicted_state[HEADING_IDX] = fmod(fmod(heading + M_PI, two_pi) + two_pi, two_pi) - M_PI;
 
     predicted_state[VELOCITY_IDX] = velocity + acceleration * dt;
     predicted_state[YAW_RATE_IDX] = yaw_rate;
@@ -110,54 +129,54 @@ ctra_matrix_t TemporalAlignerEKF::predict_covariation(float delta_t, const ctra_
 }
 
 ctra_matrix_t TemporalAlignerEKF::gen_ja_matrix(float delta_t, const ctra_array_t& state) {
-    float dt = delta_t;
-    float yaw = state[YAW_IDX], velocity = state[VELOCITY_IDX], yaw_rate = state[YAW_RATE_IDX], acceleration = state[ACCELERATION_IDX];
+    double dt = delta_t;
+    double yaw = state[HEADING_IDX], velocity = state[VELOCITY_IDX], yaw_rate = state[YAW_RATE_IDX], acceleration = state[ACCELERATION_IDX];
 
     // Calculate the Jacobian
-    float a13 = (
-      (-yaw_rate*velocity*cosf(yaw) + acceleration*sinf(yaw)
-      - acceleration*sinf(dt*yaw_rate + yaw) + (dt*yaw_rate*acceleration + yaw_rate*velocity)*cosf(dt*yaw_rate
+    double a13 = (
+      (-yaw_rate*velocity*cos(yaw) + acceleration*sin(yaw)
+      - acceleration*sin(dt*yaw_rate + yaw) + (dt*yaw_rate*acceleration + yaw_rate*velocity)*cos(dt*yaw_rate
       + yaw))/pow(yaw_rate, 2)
     );
 
-    float a14 = (-yaw_rate*sinf(yaw) + yaw_rate*sinf(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
+    double a14 = (-yaw_rate*sin(yaw) + yaw_rate*sin(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
 
-    float a15 = (
+    double a15 = (
       (
-        -dt*acceleration*sinf(dt*yaw_rate + yaw) + dt*(dt*yaw_rate*acceleration + yaw_rate*velocity)
-        * cosf(dt*yaw_rate + yaw) - velocity*sinf(yaw) + (dt*acceleration + velocity)
-        * sinf(dt*yaw_rate + yaw)
+        -dt*acceleration*sin(dt*yaw_rate + yaw) + dt*(dt*yaw_rate*acceleration + yaw_rate*velocity)
+        * cos(dt*yaw_rate + yaw) - velocity*sin(yaw) + (dt*acceleration + velocity)
+        * sin(dt*yaw_rate + yaw)
       ) / pow(yaw_rate, 2)
       - 2*(
-        -yaw_rate*velocity*sinf(yaw) - acceleration
-        * cosf(yaw) + acceleration*cosf(dt*yaw_rate + yaw) + (dt*yaw_rate*acceleration + yaw_rate*velocity)
-        * sinf(dt*yaw_rate + yaw)
+        -yaw_rate*velocity*sin(yaw) - acceleration
+        * cos(yaw) + acceleration*cos(dt*yaw_rate + yaw) + (dt*yaw_rate*acceleration + yaw_rate*velocity)
+        * sin(dt*yaw_rate + yaw)
       ) / pow(yaw_rate, 3)
     );
 
-    float a16 = (dt*yaw_rate*sinf(dt*yaw_rate + yaw) - cosf(yaw) + cosf(dt * yaw_rate + yaw))/pow(yaw_rate, 2);
+    double a16 = (dt*yaw_rate*sin(dt*yaw_rate + yaw) - cos(yaw) + cos(dt * yaw_rate + yaw))/pow(yaw_rate, 2);
 
-    float a23 = (
+    double a23 = (
       (
-        -yaw_rate * velocity * sinf(yaw) - acceleration * cosf(yaw) + acceleration * cosf(dt * yaw_rate + yaw)
-        - (-dt * yaw_rate*acceleration - yaw_rate * velocity) * sinf(dt * yaw_rate + yaw)
+        -yaw_rate * velocity * sin(yaw) - acceleration * cos(yaw) + acceleration * cos(dt * yaw_rate + yaw)
+        - (-dt * yaw_rate*acceleration - yaw_rate * velocity) * sin(dt * yaw_rate + yaw)
       ) / pow(yaw_rate, 2)
     );
 
-    float a24 = (yaw_rate * cosf(yaw) - yaw_rate*cosf(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
+    double a24 = (yaw_rate * cos(yaw) - yaw_rate*cos(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
 
-    float a25 = (
+    double a25 = (
       (
-        dt * acceleration*cosf(dt*yaw_rate + yaw) - dt * (-dt*yaw_rate*acceleration - yaw_rate * velocity)
-        * sinf(dt * yaw_rate + yaw) + velocity*cosf(yaw) + (-dt*acceleration - velocity)*cosf(dt*yaw_rate + yaw)
+        dt * acceleration*cos(dt*yaw_rate + yaw) - dt * (-dt*yaw_rate*acceleration - yaw_rate * velocity)
+        * sin(dt * yaw_rate + yaw) + velocity*cos(yaw) + (-dt*acceleration - velocity)*cos(dt*yaw_rate + yaw)
       ) / pow(yaw_rate, 2)
       - 2*(
-        yaw_rate*velocity*cosf(yaw) - acceleration * sinf(yaw) + acceleration * sinf(dt*yaw_rate + yaw)
-        + (-dt * yaw_rate * acceleration - yaw_rate * velocity)*cosf(dt*yaw_rate + yaw)
+        yaw_rate*velocity*cos(yaw) - acceleration * sin(yaw) + acceleration * sin(dt*yaw_rate + yaw)
+        + (-dt * yaw_rate * acceleration - yaw_rate * velocity)*cos(dt*yaw_rate + yaw)
       ) / pow(yaw_rate, 3)
     );
 
-    float a26 = (-dt*yaw_rate*cosf(dt*yaw_rate + yaw) - sinf(yaw) + sinf(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
+    double a26 = (-dt*yaw_rate*cos(dt*yaw_rate + yaw) - sin(yaw) + sin(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
 
     ctra_matrix_t JA;
     JA << 1.0, 0.0, a13, a14, a15, a16,
@@ -212,34 +231,39 @@ void TemporalAlignerEKF::update(const state_t& measurement, const ctra_squared_t
     P = (ctra_matrix_t::Identity() - K*JH)*P;
 }
 
-/*
-* From [x, y, yaw, v, yaw_rate, a] to [x, y, vx, vy, ax, ay, yaw, yaw_rate]
-*/
-state_t TemporalAlignerEKF::format_to_object_model(const ctra_array_t& state){
+state_t TemporalAlignerEKF::format_to_object_model(const ctra_array_t& state, float yaw, float velocity_heading, float acceleration_heading){
     return {
         state[X_IDX],
         state[Y_IDX],
-        cosf(state[YAW_IDX])*state[VELOCITY_IDX],
-        sinf(state[YAW_IDX])*state[VELOCITY_IDX],
-        cosf(state[YAW_IDX])*state[ACCELERATION_IDX],
-        sinf(state[YAW_IDX])*state[ACCELERATION_IDX],
-        state[YAW_IDX],
+        cosf(velocity_heading)*state[VELOCITY_IDX],
+        sinf(velocity_heading)*state[VELOCITY_IDX],
+        cosf(acceleration_heading)*state[ACCELERATION_IDX],
+        sinf(acceleration_heading)*state[ACCELERATION_IDX],
+        yaw,
         state[YAW_RATE_IDX]
     };
 }
 
-/*
-* From [x, y, vx, vy, ax, ay, yaw, yaw_rate] to [x, y, yaw, v, yaw_rate, a]
-*/
 ctra_array_t TemporalAlignerEKF::format_from_object_model(const state_t& state){
     using namespace object_model_msgs::msg;
+
+    const float heading = atan2(state[Track::STATE_VELOCITY_Y_IDX], state[Track::STATE_VELOCITY_X_IDX]);
 
     return {
         state[Track::STATE_X_IDX],
         state[Track::STATE_Y_IDX],
-        state[Track::STATE_YAW_IDX],
+        heading,
         hypotf(state[Track::STATE_VELOCITY_X_IDX], state[Track::STATE_VELOCITY_Y_IDX]),
         state[Track::STATE_YAW_RATE_IDX],
         hypotf(state[Track::STATE_ACCELERATION_X_IDX], state[Track::STATE_ACCELERATION_Y_IDX])
     };
+}
+
+std::pair<float, float> TemporalAlignerEKF::get_headings(const state_t& state) {
+    using namespace object_model_msgs::msg;
+
+    return std::make_pair(
+        atan2(state[Track::STATE_VELOCITY_Y_IDX], state[Track::STATE_VELOCITY_X_IDX]),
+        atan2(state[Track::STATE_ACCELERATION_Y_IDX], state[Track::STATE_ACCELERATION_X_IDX])
+    );
 }

@@ -25,12 +25,14 @@ Fusion::~Fusion() {
 void Fusion::log_csv_style(const object_model_msgs::msg::ObjectModel::SharedPtr msg, const state_t& state) {
     using object_model_msgs::msg::Track;
 
-    std::string timestamp = std::to_string(get_timestamp(msg));
+    const std::string timestamp = std::to_string(get_timestamp(msg));
+    const std::string sensor_name = msg->header.frame_id;
 
     // Didn't add \n to add more attributes in other points in code
     fprintf(stdout,
-            "%s,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f",
+            "%s,%s,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f,%0.5f",
             timestamp.c_str(),
+            sensor_name.c_str(),
             state[Track::STATE_X_IDX],
             state[Track::STATE_Y_IDX],
             state[Track::STATE_VELOCITY_X_IDX],
@@ -113,6 +115,7 @@ void Fusion::topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 void Fusion::temporally_align_global_objects(float delta_t) {
     for(auto& object_pair : global_object_model)  {
         auto global_object = object_pair.second;
+
         TemporalAlignerEKF::align(delta_t, global_object->track.state, global_object->track.covariation);
     }
 }

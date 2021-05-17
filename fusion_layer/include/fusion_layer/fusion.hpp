@@ -16,9 +16,6 @@
 #include "fusion_layer/simple_association.hpp"
 #include "types.hpp"
 
-#include <cstdio>
-#include <cmath>
-
 class Fusion : public rclcpp::Node
 {
 private:
