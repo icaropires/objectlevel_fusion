@@ -28,13 +28,14 @@ private:
     std::map<uint32_t, object_model_msgs::msg::Object::SharedPtr> global_object_model;
   
     const std::string input_topic;
+    const std::string output_topic;
   
     uint64_t time_last_msg;
   
     rclcpp::Subscription<object_model_msgs::msg::ObjectModel>::SharedPtr subscription_;
+    rclcpp::Publisher<object_model_msgs::msg::ObjectModel>::SharedPtr publisher_;
 
     rclcpp::Service<fusion_layer::srv::RegisterSensor>::SharedPtr register_sensor_srv_;
-
     rclcpp::Service<fusion_layer::srv::RemoveSensor>::SharedPtr remove_sensor_srv_;
 
 public:
@@ -42,7 +43,9 @@ public:
   ~Fusion();
 
 private:
-    void topic_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg);
+    void publish();
+
+    void input_callback(const object_model_msgs::msg::ObjectModel::SharedPtr msg);
 
     void temporally_align_global_objects(float delta_t);
 
