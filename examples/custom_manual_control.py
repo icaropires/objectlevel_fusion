@@ -197,7 +197,7 @@ def get_relative_obj(reference_obj: Object, obj: Object) -> Object:
     result.track.state = obj_state_aligned
     result.track.state[Track.STATE_YAW_IDX] = wrap_angle(result.track.state[Track.STATE_YAW_IDX])
 
-    # print('========>', [e for e in np.round(result.track.state, 5)])
+    print('========>', [e for e in np.round(result.track.state, 5)])
 
     return result
 
