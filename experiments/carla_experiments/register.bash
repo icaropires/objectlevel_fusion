@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 ros2 service call /fusion_layer/register_sensor fusion_layer/srv/RegisterSensor "name: 'sensor1'
 x: 1.0
 y: -2.0
