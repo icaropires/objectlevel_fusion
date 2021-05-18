@@ -6,12 +6,14 @@ Fusion::Fusion()
     fusions_counter(0),
     input_topic("objectlevel_fusion/fusion_layer/fusion/submit"),
     output_topic("objectlevel_fusion/fusion_layer/fusion/get"),
+    register_sensor_path("fusion_layer/register_sensor"),
+    remove_sensor_path("fusion_layer/remove_sensor"),
     time_last_msg(0)
 {
-    register_sensor_srv_ = create_service<fusion_layer::srv::RegisterSensor>("fusion_layer/register_sensor",
+    register_sensor_srv_ = create_service<fusion_layer::srv::RegisterSensor>(register_sensor_path,
             std::bind(&Fusion::register_sensor, this, std::placeholders::_1, std::placeholders::_2));
 
-    remove_sensor_srv_ = create_service<fusion_layer::srv::RemoveSensor>("fusion_layer/remove_sensor",
+    remove_sensor_srv_ = create_service<fusion_layer::srv::RemoveSensor>(remove_sensor_path,
             std::bind(&Fusion::remove_sensor, this, std::placeholders::_1, std::placeholders::_2));
 
     subscription_ = create_subscription<object_model_msgs::msg::ObjectModel>(
@@ -80,7 +82,7 @@ void Fusion::input_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
         state_t received_state = obj.track.state;
         log_state("\n==> Received state", object_id_counter, received_state);
 
-        auto sensor = sensors[sensor_name];
+        const auto sensor = sensors[sensor_name];
 
         state_t spatially_aligned_state = spatially_align(sensor->get_x(), sensor->get_y(), sensor->get_angle(), received_state);
         log_state("\n==> Received state spatially aligned", object_id_counter, spatially_aligned_state);
@@ -89,7 +91,7 @@ void Fusion::input_callback(const object_model_msgs::msg::ObjectModel::SharedPtr
 
         log_csv_style(msg, obj.track.state); // Adding state attributes to CSV line
 
-        uint32_t global_idx = SimpleAssociation::associate(obj, global_object_model);
+        const uint32_t global_idx = SimpleAssociation::associate(obj, global_object_model);
 
         if(global_idx == global_object_model.size()) {  // It's a new object
             global_object_model[global_idx] = std::make_shared<object_model_msgs::msg::Object>(std::move(obj));
@@ -136,7 +138,7 @@ void Fusion::publish() {
 
 void Fusion::temporally_align_global_objects(float delta_t) {
     for(auto& object_pair : global_object_model)  {
-        auto global_object = object_pair.second;
+        const auto global_object = object_pair.second;
 
         TemporalAlignerEKF::align(delta_t, global_object->track.state, global_object->track.covariation);
     }
@@ -153,6 +155,8 @@ void Fusion::register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSe
           std::shared_ptr<fusion_layer::srv::RegisterSensor::Response> response) {
     constexpr int min_name_size = 2, max_name_size = 30;
 
+    response->status = "Operation not completed";
+
     try{
         if(request->name.size() < min_name_size || request->name.size() > max_name_size) {
             auto error_msg = "Failed to register sensor! Name should have between " + std::to_string(min_name_size) + " and " + std::to_string(max_name_size) + " characters.";
@@ -163,7 +167,7 @@ void Fusion::register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSe
             throw std::runtime_error("Sensor '" + request->name + "' already registered! Pick another name.");
         }
 
-        auto sensor = std::make_shared<Sensor> (request->name, request->x, request->y, request->angle, request->capable, request->measurement_noise_matrix);
+        const auto sensor = std::make_shared<Sensor> (request->name, request->x, request->y, request->angle, request->capable, request->measurement_noise_matrix);
 
         sensors[sensor->get_name()] = sensor;
 
@@ -181,6 +185,8 @@ void Fusion::register_sensor(const std::shared_ptr<fusion_layer::srv::RegisterSe
 
 void Fusion::remove_sensor(const std::shared_ptr<fusion_layer::srv::RemoveSensor::Request> request,
           std::shared_ptr<fusion_layer::srv::RemoveSensor::Response> response) {
+
+    response->status = "Operation not completed";
 
     try {
         if (sensors.find(request->name) == sensors.end()) {
