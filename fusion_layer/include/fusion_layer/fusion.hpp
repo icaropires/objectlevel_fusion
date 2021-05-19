@@ -29,6 +29,9 @@ private:
   
     const std::string input_topic;
     const std::string output_topic;
+
+    const std::string register_sensor_path;
+    const std::string remove_sensor_path;
   
     uint64_t time_last_msg;
   

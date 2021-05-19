@@ -78,9 +78,10 @@ ctra_matrix_t TemporalAlignerEKF::calculate_process_noise(float delta_t) {
 }
 
 ctra_array_t TemporalAlignerEKF::predict_state(float delta_t, const ctra_array_t& state) {
-    double dt = delta_t;
-    double pos_x = state[X_IDX], pos_y = state[Y_IDX], heading = state[HEADING_IDX];
-    double velocity = state[VELOCITY_IDX], yaw_rate = state[YAW_RATE_IDX], acceleration = state[ACCELERATION_IDX];
+    const double dt = delta_t;
+    const double pos_x = state[X_IDX], pos_y = state[Y_IDX];
+    const double velocity = state[VELOCITY_IDX], acceleration = state[ACCELERATION_IDX];
+    double yaw_rate = state[YAW_RATE_IDX], heading = state[HEADING_IDX];
 
     ctra_array_t predicted_state;
 
@@ -88,16 +89,14 @@ ctra_array_t TemporalAlignerEKF::predict_state(float delta_t, const ctra_array_t
         yaw_rate = 0.00001;
     }
 
-    double new_x = pos_x + (1 / pow(yaw_rate, 2)) *
+    const double new_x = pos_x + (1 / pow(yaw_rate, 2)) *
         (
             (velocity*yaw_rate + acceleration * yaw_rate * dt) * sin(heading + yaw_rate * dt)
             + acceleration * cos(heading + yaw_rate * dt)
             - velocity * yaw_rate * sin(heading) - acceleration * cos(heading)
         );
 
-    fprintf(stderr, "UEEEEEE %0.2f\n", state[Y_IDX]);
-    fprintf(stderr, "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f\n", pos_y, yaw_rate, velocity, acceleration, dt, heading);
-    double new_y = pos_y + (1 / pow(yaw_rate, 2)) *
+    const double new_y = pos_y + (1 / pow(yaw_rate, 2)) *
         (
             (-velocity*yaw_rate - acceleration * yaw_rate * dt) * cos(heading + yaw_rate * dt)
             + acceleration * sin(heading + yaw_rate * dt)
@@ -105,9 +104,6 @@ ctra_array_t TemporalAlignerEKF::predict_state(float delta_t, const ctra_array_t
         );
     predicted_state[X_IDX] = new_x;
     predicted_state[Y_IDX] = new_y;
-
-    fprintf(stderr, "UEEEEEE %0.5f\n", predicted_state[Y_IDX]);
-    fprintf(stderr, "2UEEEEEE %0.5lf\n", new_y);
 
     // Wraps angle in [-pi, pi). Check experiment directory for more information
     heading = heading + yaw_rate * dt;
@@ -129,19 +125,19 @@ ctra_matrix_t TemporalAlignerEKF::predict_covariation(float delta_t, const ctra_
 }
 
 ctra_matrix_t TemporalAlignerEKF::gen_ja_matrix(float delta_t, const ctra_array_t& state) {
-    double dt = delta_t;
-    double yaw = state[HEADING_IDX], velocity = state[VELOCITY_IDX], yaw_rate = state[YAW_RATE_IDX], acceleration = state[ACCELERATION_IDX];
+    const double dt = delta_t;
+    const double yaw = state[HEADING_IDX], velocity = state[VELOCITY_IDX], yaw_rate = state[YAW_RATE_IDX], acceleration = state[ACCELERATION_IDX];
 
     // Calculate the Jacobian
-    double a13 = (
+    const double a13 = (
       (-yaw_rate*velocity*cos(yaw) + acceleration*sin(yaw)
       - acceleration*sin(dt*yaw_rate + yaw) + (dt*yaw_rate*acceleration + yaw_rate*velocity)*cos(dt*yaw_rate
       + yaw))/pow(yaw_rate, 2)
     );
 
-    double a14 = (-yaw_rate*sin(yaw) + yaw_rate*sin(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
+    const double a14 = (-yaw_rate*sin(yaw) + yaw_rate*sin(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
 
-    double a15 = (
+    const double a15 = (
       (
         -dt*acceleration*sin(dt*yaw_rate + yaw) + dt*(dt*yaw_rate*acceleration + yaw_rate*velocity)
         * cos(dt*yaw_rate + yaw) - velocity*sin(yaw) + (dt*acceleration + velocity)
@@ -154,18 +150,18 @@ ctra_matrix_t TemporalAlignerEKF::gen_ja_matrix(float delta_t, const ctra_array_
       ) / pow(yaw_rate, 3)
     );
 
-    double a16 = (dt*yaw_rate*sin(dt*yaw_rate + yaw) - cos(yaw) + cos(dt * yaw_rate + yaw))/pow(yaw_rate, 2);
+    const double a16 = (dt*yaw_rate*sin(dt*yaw_rate + yaw) - cos(yaw) + cos(dt * yaw_rate + yaw))/pow(yaw_rate, 2);
 
-    double a23 = (
+    const double a23 = (
       (
         -yaw_rate * velocity * sin(yaw) - acceleration * cos(yaw) + acceleration * cos(dt * yaw_rate + yaw)
         - (-dt * yaw_rate*acceleration - yaw_rate * velocity) * sin(dt * yaw_rate + yaw)
       ) / pow(yaw_rate, 2)
     );
 
-    double a24 = (yaw_rate * cos(yaw) - yaw_rate*cos(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
+    const double a24 = (yaw_rate * cos(yaw) - yaw_rate*cos(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
 
-    double a25 = (
+    const double a25 = (
       (
         dt * acceleration*cos(dt*yaw_rate + yaw) - dt * (-dt*yaw_rate*acceleration - yaw_rate * velocity)
         * sin(dt * yaw_rate + yaw) + velocity*cos(yaw) + (-dt*acceleration - velocity)*cos(dt*yaw_rate + yaw)
@@ -176,7 +172,7 @@ ctra_matrix_t TemporalAlignerEKF::gen_ja_matrix(float delta_t, const ctra_array_
       ) / pow(yaw_rate, 3)
     );
 
-    double a26 = (-dt*yaw_rate*cos(dt*yaw_rate + yaw) - sin(yaw) + sin(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
+    const double a26 = (-dt*yaw_rate*cos(dt*yaw_rate + yaw) - sin(yaw) + sin(dt*yaw_rate + yaw))/pow(yaw_rate, 2);
 
     ctra_matrix_t JA;
     JA << 1.0, 0.0, a13, a14, a15, a16,

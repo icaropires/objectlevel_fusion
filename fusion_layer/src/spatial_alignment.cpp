@@ -4,8 +4,8 @@ state_t spatially_align(float delta_x, float delta_y, float angle, const state_t
     constexpr float two_pi = M_PI*2;
     angle = fmod(fmod(angle + M_PI, two_pi) + two_pi, two_pi) - M_PI;
 
-    float sin_angle = sinf(angle);
-    float cos_angle = cosf(angle);
+    const float sin_angle = sinf(angle);
+    const float cos_angle = cosf(angle);
 
     static constexpr int state_size = object_model_msgs::msg::Track::STATE_SIZE;
     static constexpr int transform_size = state_size + 1;
