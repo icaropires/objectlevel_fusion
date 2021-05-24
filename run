@@ -6,6 +6,17 @@ help_() {
 Despite most of the underneath commands being run using Docker, it's a specially useful script for people who don't know how to use Docker.
 
 Usage: ./$(basename $0) [up|down|build|compile|status|shell|tests|clean|tests_no_tty|help]
+
+Commands:
+  up         Starts the application.
+  down       Bring the application down. More useful when starting the application in background or for cleaning.
+  build      Builds the applications containers.
+  compile    Recompiles from source code without the need to call 'build' again. Requires that the application is NOT running.
+  status     To check the status of the application containers
+  shell      Executes a shell inside the application container. Useful for running customized commands. Requires the application to be UP.
+  tests      Executes the unitary tests from the application. Requires the application to be UP.
+  clean      Delete the directories auto generated when compiling the application
+  help       Prints this help
 "
 }
 
