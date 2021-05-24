@@ -15,6 +15,11 @@ RUN apt update -y \
   && colcon build --event-handlers console_cohesion+ \
   && ln -s /ros2_ws/src/docker/entrypoint.sh /entrypoint.sh
 
+# To keep a backup in case of binding
+RUN cp -aT /ros2_ws/build /opt/build \
+  && cp -aT /ros2_ws/install /opt/install \
+  && cp -aT /ros2_ws/log /opt/log
+
 ENTRYPOINT ["/entrypoint.sh"]
 
 CMD /opt/ros/foxy/bin/ros2 run fusion_layer fusion > fusion_layer.csv

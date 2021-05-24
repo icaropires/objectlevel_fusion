@@ -14,6 +14,21 @@ ARGS=${@:2}
 
 COMPOSE_FILE="docker/docker-compose.dev.yml"
 
+set -e
+
+retrieve_build_files() {
+    set +e
+
+    [ -f install/setup.sh ] \
+      || sudo docker-compose -f $COMPOSE_FILE run \
+        --rm \
+        --entrypoint='' \
+        fusion_layer \
+        bash -c "cp -aT /opt/install /ros2_ws/install \
+         && cp -aT /opt/build /ros2_ws/build \
+         && cp -aT /opt/log /ros2_ws/log"
+}
+
 build() {
     echo "Building the application..."
     sudo docker-compose -f $COMPOSE_FILE build $ARGS
@@ -21,6 +36,7 @@ build() {
 
 up() {
     echo "Bringing the application up..."
+    retrieve_build_files
     sudo docker-compose -f $COMPOSE_FILE up $ARGS
 }
 
@@ -31,18 +47,20 @@ down() {
 
 shell() {
     echo "Initializing shell in the container..."
+    set +e
+
     sudo docker-compose -f $COMPOSE_FILE exec fusion_layer /entrypoint.sh bash $ARGS \
-        || echo -e "\nSome error happened. Was the application UP when you tried to run the command?"
+        || echo -e "\nSome error happened. Was the application UP when you tried to run the command?" \
+        && exit 1
 }
 
 compile() {
     echo "Initializing shell in the container..."
 
-    sudo docker-compose -f $COMPOSE_FILE run \
+    sudo docker-compose -f $COMPOSE_FILE run --rm \
     --entrypoint='' \
     fusion_layer \
-    bash -c ". /opt/ros/foxy/setup.sh && colcon build $ARGS" \
-        || echo -e "\nSome error happened. Was the application DOWN when you tried to compile?"
+    bash -c ". /opt/ros/foxy/setup.sh && colcon build $ARGS"
 }
 
 status_() {
@@ -53,8 +71,12 @@ status_() {
 tests() {
     echo "Running tests..."
     sudo docker-compose -f $COMPOSE_FILE exec fusion_layer \
-        /entrypoint.sh colcon test --packages-above fusion_layer --return-code-on-test-failure --event-handlers console_cohesion+ $ARGS \
-      || echo -e "\nSome error happened. Was the application UP when you tried to run the tests?"
+        /entrypoint.sh colcon test --packages-above fusion_layer --return-code-on-test-failure --event-handlers console_cohesion+ $ARGS
+}
+
+clean() {
+    echo "Cleaning generated files"
+    sudo rm -rf build log install
 }
 
 
@@ -86,6 +108,9 @@ case $CMD in
   ;;
   help)
     help_
+  ;;
+  clean)
+    clean
   ;;
   *)
     echo "Unknown command $1!"
