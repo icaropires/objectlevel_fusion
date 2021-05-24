@@ -31,7 +31,7 @@ down() {
 
 shell() {
     echo "Initializing shell in the container..."
-    sudo docker-compose -f $COMPOSE_FILE exec fusion_layer bash $ARGS \
+    sudo docker-compose -f $COMPOSE_FILE exec fusion_layer /entrypoint.sh bash $ARGS \
         || echo -e "\nSome error happened. Was the application UP when you tried to run the command?"
 }
 
@@ -50,6 +50,13 @@ status_() {
     sudo docker-compose -f $COMPOSE_FILE ps
 }
 
+tests() {
+    echo "Running tests..."
+    sudo docker-compose -f $COMPOSE_FILE exec fusion_layer \
+        /entrypoint.sh colcon test --packages-above fusion_layer --return-code-on-test-failure --event-handlers console_cohesion+ $ARGS \
+      || echo -e "\nSome error happened. Was the application UP when you tried to run the tests?"
+}
+
 
 case $CMD in
   "")
@@ -66,7 +73,7 @@ case $CMD in
     down
   ;;
   status)
-    status
+    status_
   ;;
   shell)
     shell
@@ -74,8 +81,11 @@ case $CMD in
   compile)
     compile
   ;;
+  tests)
+    tests
+  ;;
   help)
-    help
+    help_
   ;;
   *)
     echo "Unknown command $1!"
