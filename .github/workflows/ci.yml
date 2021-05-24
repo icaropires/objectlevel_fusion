@@ -19,4 +19,4 @@ jobs:
         run: ./run up -d
 
       - name: Run tests
-        run: ./run tests
+        run: ./run tests_no_tty

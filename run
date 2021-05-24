@@ -5,7 +5,7 @@ help_() {
 "This is a simple CLI with the most default commands to help running the object-level fusion.
 Despite most of the underneath commands being run using Docker, it's a specially useful script for people who don't know how to use Docker.
 
-Usage: ./$(basename $0) [up|down|build|status|shell|example_carla|help]
+Usage: ./$(basename $0) [up|down|build|compile|status|shell|tests|clean|tests_no_tty|help]
 "
 }
 
@@ -16,7 +16,7 @@ COMPOSE_FILE="docker/docker-compose.dev.yml"
 
 set -e
 
-retrieve_build_files() {
+_retrieve_build_files() {
     set +e
 
     [ -f install/setup.sh ] \
@@ -36,7 +36,7 @@ build() {
 
 up() {
     echo "Bringing the application up..."
-    retrieve_build_files
+    _retrieve_build_files
     sudo docker-compose -f $COMPOSE_FILE up $ARGS
 }
 
@@ -71,6 +71,12 @@ status_() {
 tests() {
     echo "Running tests..."
     sudo docker-compose -f $COMPOSE_FILE exec fusion_layer \
+        /entrypoint.sh colcon test --packages-above fusion_layer --return-code-on-test-failure --event-handlers console_cohesion+ $ARGS
+}
+
+tests_no_tty() {
+    echo "Running tests..."
+    sudo docker-compose -f $COMPOSE_FILE exec -T fusion_layer \
         /entrypoint.sh colcon test --packages-above fusion_layer --return-code-on-test-failure --event-handlers console_cohesion+ $ARGS
 }
 
@@ -111,6 +117,9 @@ case $CMD in
   ;;
   clean)
     clean
+  ;;
+  tests_no_tty)
+    tests_no_tty
   ;;
   *)
     echo "Unknown command $1!"
