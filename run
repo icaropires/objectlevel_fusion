@@ -1,0 +1,84 @@
+#!/bin/bash
+
+help_() {
+  echo \
+"This is a simple CLI with the most default commands to help running the object-level fusion.
+Despite most of the underneath commands being run using Docker, it's a specially useful script for people who don't know how to use Docker.
+
+Usage: ./$(basename $0) [up|down|build|status|shell|example_carla|help]
+"
+}
+
+CMD="$1"
+ARGS=${@:2}
+
+COMPOSE_FILE="docker/docker-compose.dev.yml"
+
+build() {
+    echo "Building the application..."
+    sudo docker-compose -f $COMPOSE_FILE build $ARGS
+}
+
+up() {
+    echo "Bringing the application up..."
+    sudo docker-compose -f $COMPOSE_FILE up $ARGS
+}
+
+down() {
+    echo "Bringing the application down..."
+    sudo docker-compose -f $COMPOSE_FILE down $ARGS
+}
+
+shell() {
+    echo "Initializing shell in the container..."
+    sudo docker-compose -f $COMPOSE_FILE exec fusion_layer bash $ARGS \
+        || echo -e "\nSome error happened. Was the application UP when you tried to run the command?"
+}
+
+compile() {
+    echo "Initializing shell in the container..."
+
+    sudo docker-compose -f $COMPOSE_FILE run \
+    --entrypoint='' \
+    fusion_layer \
+    bash -c ". /opt/ros/foxy/setup.sh && colcon build $ARGS" \
+        || echo -e "\nSome error happened. Was the application DOWN when you tried to compile?"
+}
+
+status_() {
+    echo "Status of the application containers:"
+    sudo docker-compose -f $COMPOSE_FILE ps
+}
+
+
+case $CMD in
+  "")
+    echo "No command specified, assuming 'up'..."
+    up
+  ;;
+  build)
+    build
+  ;;
+  up)
+    up
+  ;;
+  down)
+    down
+  ;;
+  status)
+    status
+  ;;
+  shell)
+    shell
+  ;;
+  compile)
+    compile
+  ;;
+  help)
+    help
+  ;;
+  *)
+    echo "Unknown command $1!"
+    exit 1
+  ;;
+esac

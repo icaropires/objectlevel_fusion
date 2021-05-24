@@ -21,6 +21,8 @@ Fusion::Fusion()
     );
 
     publisher_ = this->create_publisher<object_model_msgs::msg::ObjectModel>(output_topic, 10);
+
+    RCLCPP_INFO(get_logger(), "All ready! Register your sensors and start submitting messages!");
 }
 
 Fusion::~Fusion() {
@@ -242,7 +244,9 @@ uint64_t Fusion::get_timestamp(const object_model_msgs::msg::ObjectModel::Shared
 int main(int argc, char * argv[])
 {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<Fusion>());
+
+    auto fusion_node = std::make_shared<Fusion>();
+    rclcpp::spin(fusion_node);
 
     return 0;
 }
