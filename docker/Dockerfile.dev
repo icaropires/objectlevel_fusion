@@ -1,12 +1,14 @@
-# Meant to be built having the repository root as context
+# Should be built having the repository root as context
 FROM ros:foxy-ros-base
 
 RUN mkdir -p /ros2_ws/src
 
+# To be independent from binding volumes
 COPY . /ros2_ws/src
 
 WORKDIR /ros2_ws
 
+# Core dependencies
 RUN apt update -y \
   && rosdep install -i --from-path src --rosdistro foxy -y \
   && . /opt/ros/foxy/setup.sh \
@@ -15,4 +17,4 @@ RUN apt update -y \
 
 ENTRYPOINT ["/entrypoint.sh"]
 
-CMD ["/opt/ros/foxy/bin/ros2", "run", "fusion_layer", "fusion"]
+CMD /opt/ros/foxy/bin/ros2 run fusion_layer fusion > fusion_layer.csv

@@ -1,0 +1,21 @@
+version: '3.3'
+
+services:
+  fusion_layer:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    image: fusion_layer
+    network_mode: host
+    volumes:
+      - ../fusion_layer:/ros2_ws/src/fusion_layer
+      - ../object_model_msgs:/ros2_ws/src/object_model_msgs
+      - ../examples:/ros2_ws/src/examples
+      - ../experiments:/ros2_ws/src/experiments
+
+      # Content generated during compilation
+      - ../build:/ros2_ws/build
+      - ../install:/ros2_ws/install
+      - ../log:/ros2_ws/log
+    tty: true
+    stdin_open: true
