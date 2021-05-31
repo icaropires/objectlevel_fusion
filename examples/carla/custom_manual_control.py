@@ -139,8 +139,10 @@ except ImportError:
 # ==============================================================================
 
 
-# Simple time reference of the time this script is running
+# Simple time reference from since when this script is running
 STARTED_TIME = None
+
+SURROUND_SENSOR_RANGE = 50
 
 
 def find_weather_presets():
@@ -197,7 +199,7 @@ def get_relative_obj(reference_obj: Object, obj: Object) -> Object:
     result.track.state = obj_state_aligned
     result.track.state[Track.STATE_YAW_IDX] = wrap_angle(result.track.state[Track.STATE_YAW_IDX])
 
-    print('========>', [e for e in np.round(result.track.state, 5)])
+    # print('========>', list(np.round(result.track.state, 5)))
 
     return result
 
@@ -235,7 +237,10 @@ def actor_to_object_model(actor: carla.Actor) -> Object:
 class World:
     def __init__(self, carla_world, hud, ros_node, args):
         self._csv = None
+        self._extra_objs_csv = None  # Extra information about the detected objects
+
         self.open_csv()
+        self.open_extra_objs_csv()
 
         self.world = carla_world
         self.actor_role_name = args.rolename
@@ -248,10 +253,11 @@ class World:
             print('  The server could not send the OpenDRIVE (.xodr) file:')
             print('  Make sure it exists, has the same name of your town, and is correct.')
             sys.exit(1)
+
         self.hud = hud
         self.player = None
-        self.fake_sensor = None
-        self.fake_sensor2 = None
+        self.surround_sensor = None
+        self.surround_sensor2 = None
         self.imu_sensor = None
         self.camera_manager = None
         self._weather_presets = find_weather_presets()
@@ -278,11 +284,51 @@ class World:
             carla.MapLayer.All
         ]
 
-    def open_csv(self, name="ego_info.csv"):
+    def open_csv(self, name="sensor_layer.csv"):
         self._csv = open(name, "w")
+
+    def open_extra_objs_csv(self, name="sensor_layer_extra_objs.csv"):
+        self._extra_objs_csv = open(name, "w")
 
     def close_csv(self):
         self._csv.close()
+
+    def close_extra_objs_csv(self):
+        self._extra_objs_csv.close()
+
+    def add_info_csv(self, surround_sensor, ego_obj, msg):
+        time_ = self.ros_node.get_clock().now().from_msg(msg.header.stamp)
+
+        list_ = [time_.nanoseconds, surround_sensor.name, len(msg.object_model)]
+        list_.extend(list(np.round(ego_obj.track.state, 5)))
+
+        self._csv.write(','.join(map(str, list_)) + '\n')
+        self._csv.flush()
+
+    def add_info_extra_objs_csv(self):
+        actors = (list(self.world.get_actors().filter('vehicle.*'))
+                  + list(self.world.get_actors().filter('walker.pedestrian.*')))
+
+        player_location = self.player.get_location()
+        time_ = self.ros_node.get_clock().now()
+
+        def get_distance(a):
+            location = a.get_location()
+            return math.hypot(location.x - player_location.x, location.y - player_location.y)
+
+        for actor in actors:
+            distance = get_distance(actor)
+
+            if distance <= SURROUND_SENSOR_RANGE and actor.id != self.player.id:
+                location = actor.get_location()
+                bb = actor.bounding_box
+
+                attrs = [time_.nanoseconds, actor.id, actor.type_id, distance, bb.extent.x*2, bb.extent.y*2, location.x, location.y]
+                line = ','.join(map(str, attrs)) + '\n'
+
+                self._extra_objs_csv.write(line)
+
+        self._extra_objs_csv.flush()
 
     def restart(self):
         self.player_max_speed = 1.589
@@ -332,8 +378,8 @@ class World:
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.modify_vehicle_physics(self.player)
 
-        self.fake_sensor = FakeSensor(self, 1.0, -2.0, np.pi/4, 'sensor1')
-        self.fake_sensor2 = FakeSensor(self, -1.0, 0.5, -np.pi/3, 'sensor2')
+        self.surround_sensor = SurroundSensor(self, 1.0, -2.0, np.pi/4, 'sensor1')
+        self.surround_sensor2 = SurroundSensor(self, -1.0, 0.5, -np.pi/3, 'sensor2')
 
         self.imu_sensor = IMUSensor(self.player)
         self.camera_manager = CameraManager(self.player, self.hud, self._gamma)
@@ -342,15 +388,6 @@ class World:
 
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
-
-    def add_info_csv(self, fake_sensor, ego_obj, msg):
-        time_ = self.ros_node.get_clock().now().from_msg(msg.header.stamp)
-
-        list_ = [time_.nanoseconds, fake_sensor.name, len(msg.object_model)]
-        list_.extend(list(np.round(ego_obj.track.state, 5)))
-
-        self._csv.write(','.join(str(e) for e in list_) + '\n')
-        self._csv.flush()
 
     def next_weather(self, reverse=False):
         self._weather_index += -1 if reverse else 1
@@ -402,6 +439,7 @@ class World:
             self.player.destroy()
 
         self.close_csv()
+        self.close_extra_objs_csv()
 
 
 # ==============================================================================
@@ -564,23 +602,23 @@ class KeyboardControl:
                         world.close_csv()
                         world.open_csv()
 
-                        world.fake_sensor.destroy()
-                        world.fake_sensor2.destroy()
+                        world.surround_sensor.destroy()
+                        world.surround_sensor2.destroy()
 
-                        world.fake_sensor = FakeSensor(
+                        world.surround_sensor = SurroundSensor(
                             world,
-                            world.fake_sensor.relative_x,
-                            world.fake_sensor.relative_y,
-                            world.fake_sensor.relative_angle,
-                            world.fake_sensor.name
+                            world.surround_sensor.relative_x,
+                            world.surround_sensor.relative_y,
+                            world.surround_sensor.relative_angle,
+                            world.surround_sensor.name
                         )
 
-                        world.fake_sensor2 = FakeSensor(
+                        world.surround_sensor2 = SurroundSensor(
                             world,
-                            world.fake_sensor2.relative_x,
-                            world.fake_sensor2.relative_y,
-                            world.fake_sensor2.relative_angle,
-                            world.fake_sensor2.name
+                            world.surround_sensor2.relative_x,
+                            world.surround_sensor2.relative_y,
+                            world.surround_sensor2.relative_angle,
+                            world.surround_sensor2.name
                         )
 
 
@@ -715,15 +753,18 @@ class HUD:
             '',
             'Number of vehicles: % 8d' % len(vehicles)
         ]
+        # nearby_vehicles = world.surround_sensor.read(vehicles)
 
-        nearby_vehicles = world.fake_sensor.read(vehicles)
+        actors = list(world.world.get_actors().filter('walker.pedestrian.*'))
+        actors += list(vehicles)
+        nearby_actors = world.surround_sensor.read(actors)
 
-        if nearby_vehicles:
-            self._info_text += ['', 'Surrounding vehicles:']
+        if nearby_actors:
+            self._info_text += ['', 'Surrounding actors:']
 
-            for distance, vehicle in nearby_vehicles:
-                vehicle_type = get_actor_display_name(vehicle, truncate=22)
-                self._info_text.append('    % 4dm %s' % (distance, vehicle_type))
+            for distance, actor in nearby_actors:
+                actor_type = get_actor_display_name(actor, truncate=22)
+                self._info_text.append('    % 4dm %s' % (distance, actor_type))
 
     def toggle_info(self):
         self._show_info = not self._show_info
@@ -835,11 +876,11 @@ class HelpText:
 
 
 # ==============================================================================
-# -- FakeSensor ----------------------------------------------------------------
+# -- SurroundSensor ----------------------------------------------------------------
 # ==============================================================================
 
-class FakeSensor:
-    def __init__(self, world, x=0., y=0., angle=0., name="fake_sensor"):
+class SurroundSensor:
+    def __init__(self, world, x=0., y=0., angle=0., name="surround_sensor"):
         self.name = name
         self.world = world
         self.node = world.ros_node
@@ -890,10 +931,12 @@ class FakeSensor:
 
             global STARTED_TIME
 
-            vehicles = self.world.world.get_actors().filter('vehicle.*')
-            nearby_vehicles = [v for d, v in self.read(vehicles)]
+            actors = list(world.world.get_actors().filter('walker.pedestrian.*'))
+            actors += list(self.world.world.get_actors().filter('vehicle.*'))
 
-            if len(nearby_vehicles) == 0:
+            nearby_actors = [v for d, v in self.read(actors)]
+
+            if len(nearby_actors) == 0:
                 return
 
             # Discard first seconds of simulation, they're noisy
@@ -903,7 +946,7 @@ class FakeSensor:
             if datetime.datetime.now() - STARTED_TIME < datetime.timedelta(seconds=2):
                 return
 
-            self.publish(nearby_vehicles)
+            self.publish(nearby_actors)
 
         self._callback_id = self.world.world.on_tick(_callback)
 
@@ -943,30 +986,33 @@ class FakeSensor:
         return self.sensor_remover_client.call_async(request)
 
 
-    def read(self, vehicles=None, distance=50):
+    def read(self, actors=None, distance=SURROUND_SENSOR_RANGE):
         if self.world is None:
             return []
 
         def get_distance(location):
             return math.hypot(location.x - self.x, location.y - self.y)
 
-        vehicles = vehicles or self.world.world.get_actors().filter('vehicle.*')
+        actors = actors or (list(self.world.world.get_actors().filter('vehicle.*'))
+                            + list(self.world.world.get_actors().filter('walker.pedestrian.*')))
 
-        distances = ((get_distance(veh.get_location()), veh)
-                     for veh in vehicles if veh.id != self.world.player.id)
+        distances = ((get_distance(a.get_location()), a)
+                     for a in actors if a.id != self.world.player.id)
 
-        distances = sorted([(d, veh) for d, veh in distances if d <= distance])
+        with_distances = sorted([(d, a) for d, a in distances if d <= distance])
 
         self.time_last_measurement = self.node.get_clock().now()
 
-        return distances
+        return with_distances
 
     def publish(self, measurement):
         ego_obj = actor_to_object_model(self.world.player)
         msg = self._measurement_to_msg(measurement, ego_obj)
 
         self.publisher.publish(msg)
+
         self.world.add_info_csv(self, ego_obj, msg)
+        self.world.add_info_extra_objs_csv()
 
     def get_relative(self, obj: Object) -> Object:
         angle = self.relative_angle
@@ -1201,8 +1247,8 @@ def game_loop(args):
             client.stop_recorder()
 
         if world is not None:
-            world.fake_sensor.destroy()
-            world.fake_sensor2.destroy()
+            world.surround_sensor.destroy()
+            world.surround_sensor2.destroy()
 
             ros_node.destroy_node()
             rclpy.shutdown()
