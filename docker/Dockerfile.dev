@@ -9,8 +9,7 @@ COPY . /ros2_ws/src
 WORKDIR /ros2_ws
 
 # Core dependencies
-RUN apt update -y \
-  && rosdep install -i --from-path src --rosdistro foxy -y \
+RUN rosdep install -i --from-path src --rosdistro foxy -y \
   && . /opt/ros/foxy/setup.sh \
   && colcon build --event-handlers console_cohesion+ \
   && ln -s /ros2_ws/src/docker/entrypoint.sh /entrypoint.sh
@@ -19,6 +18,8 @@ RUN apt update -y \
 RUN cp -aT /ros2_ws/build /opt/build \
   && cp -aT /ros2_ws/install /opt/install \
   && cp -aT /ros2_ws/log /opt/log
+
+ENV FASTRTPS_DEFAULT_PROFILES_FILE="/ros2_ws/src/docker/fastrtps-profile.xml"
 
 ENTRYPOINT ["/entrypoint.sh"]
 
