@@ -8,8 +8,13 @@ COPY . /ros2_ws/src
 
 WORKDIR /ros2_ws
 
+# TODO: The command below about the recv-keys it due a bug in ROS repository.
+# When it is fixed, the command won't be needed anymore.
+# Ref: https://discourse.ros.org/t/ros-gpg-key-expiration-incident/20669/36
+
 # Core dependencies
-RUN apt update -y \
+RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F42ED6FBAB17C654 \
+  && apt update -y \
   && rosdep install -i --from-path src --rosdistro foxy -y \
   && . /opt/ros/foxy/setup.sh \
   && colcon build --event-handlers console_cohesion+ \
@@ -19,6 +24,8 @@ RUN apt update -y \
 RUN cp -aT /ros2_ws/build /opt/build \
   && cp -aT /ros2_ws/install /opt/install \
   && cp -aT /ros2_ws/log /opt/log
+
+ENV FASTRTPS_DEFAULT_PROFILES_FILE="/ros2_ws/src/docker/fastrtps-profile.xml"
 
 ENTRYPOINT ["/entrypoint.sh"]
 
