@@ -6,6 +6,12 @@
 
 Object-level fusion performs fusion at a higher level of abstraction and, for this reason, contributes to modularity and reuse. This work implements a software solution to address part of this reimplementation problem. It's composed of ROS 2 packages and implements the object list preprocessing from the fusion layer of an object-level fusion architecture. This preprocessing is composed of the **spatial and temporal alignments**, plus the **objects association**. Finally, this preprocessing was validated with an experiment using [CARLA](http://carla.org/) self-driving simulator, using as main metric the number of failed associations in some test case scenarios ([check experiment](experiments/carla)).
 
+## Bachelor's thesis document
+
+The document version that was reviewed and approved by the thesis comittee can be found at:
+* [University repository](https://bdm.unb.br/handle/10483/30630)
+* [thesis/bachelors\_thesis.pdf](./thesis/bachelors_thesis.pdf)
+
 ## Architecture Layers
 
 > _Checked boxes means implemented in this repository_
