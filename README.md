@@ -10,7 +10,7 @@ Object-level fusion performs fusion at a higher level of abstraction and, for th
 
 The document version that was reviewed and approved by the thesis comittee can be found at:
 * [University repository](https://bdm.unb.br/handle/10483/30630)
-* [Local version](./thesis/bachelors_thesis.pdf)
+* [thesis/bachelors\_thesis.pdf](./thesis/bachelors_thesis.pdf)
 
 ## Architecture Layers
 
